@@ -1,12 +1,14 @@
 "use client";
+
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
+  const supabase = createClient();
 
   const handleSignUp = async () => {
     const { error } = await supabase.auth.signUp({
@@ -14,10 +16,7 @@ export default function LoginPage() {
       password,
     });
     if (error) alert(error.message);
-    else
-      alert(
-        "Sukses! Cek email kamu (atau langsung login jika settingan confirm off)"
-      );
+    else alert("Sukses! Cek email kamu.");
   };
 
   const handleLogin = async () => {
@@ -28,7 +27,7 @@ export default function LoginPage() {
     if (error) {
       alert(error.message);
     } else {
-      router.push("/"); // Redirect ke home kalau sukses
+      router.push("/");
       router.refresh();
     }
   };
