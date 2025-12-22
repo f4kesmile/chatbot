@@ -1,11 +1,6 @@
-import {
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
-import { AuthButton } from "@/components/auth-button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { AuthButton } from "@/components/auth-button"; // Avatar untuk kanan atas
 
 export default function MainLayout({
   children,
@@ -13,39 +8,27 @@ export default function MainLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <SidebarProvider>
-      {/* 1. Sidebar Kiri */}
+    // CONTAINER UTAMA (Padding & Gap untuk efek floating)
+    <div className="flex h-screen w-full bg-white dark:bg-black md:bg-zinc-100 md:dark:bg-black md:p-2 md:gap-2">
+      {/* 1. Sidebar Kiri (Lebar tertutup 80px) */}
       <AppSidebar />
 
-      {/* 2. Area Kanan */}
-      <SidebarInset className="bg-background flex flex-col h-screen overflow-hidden transition-colors duration-300">
-        {/* --- HEADER --- */}
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4 bg-background/50 backdrop-blur-md z-10 sticky top-0">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger className="-ml-1" />
-            <span className="font-medium text-sm text-muted-foreground">
-              Vibe Coder
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Toggle Tema */}
-            <ThemeTogglerButton />
-
-            {/* Garis Pemisah */}
-            <div className="h-6 w-px bg-border mx-1"></div>
-
-            {/* --- 2. PASANG AUTH BUTTON DISINI --- */}
-            {/* Tombol ini akan otomatis berubah: Sign In <-> Avatar */}
+      {/* 2. Main Content Area */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* LAYOUT POJOK KANAN ATAS: Theme Toggler + Avatar */}
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-white/50 dark:bg-black/50 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-full p-1 shadow-none">
+            <ThemeToggle />
+            <div className="h-5 w-px bg-zinc-300 dark:bg-zinc-700 mx-1" />
             <AuthButton />
           </div>
-        </header>
+        </div>
 
-        {/* --- MAIN CONTENT --- */}
-        <main className="flex-1 overflow-hidden relative flex flex-col">
+        {/* CONTENT CARD (Rounded & Shadow) */}
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-zinc-900 md:rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-none relative">
           {children}
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+        </div>
+      </main>
+    </div>
   );
 }

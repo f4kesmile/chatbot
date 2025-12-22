@@ -1,181 +1,275 @@
 "use client";
 
-import * as React from "react";
+import React, { useState, useEffect } from "react";
+import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
 import {
-  AudioWaveform,
-  Command,
-  GalleryVerticalEnd,
-  MessageSquare,
-  LayoutDashboard,
-  Settings,
-  LifeBuoy,
-  BookOpen,
-  MoreHorizontal,
-  Trash2,
-  FolderGit2,
-} from "lucide-react";
+  IconMessage,
+  IconHelp,
+  IconLayoutDashboard,
+  IconSettings,
+  IconBook,
+  IconHistory,
+} from "@tabler/icons-react";
+import { LogOut } from "lucide-react";
+import { motion } from "motion/react";
+import { cn } from "@/lib/utils";
+import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 
+// Dropdown & Avatar
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuAction,
-  SidebarFooter,
-} from "@/components/ui/sidebar";
-import { AuthButton } from "@/components/auth-button";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-// --- DATA STATIS (Bisa dipindah ke lib/data.ts nanti) ---
-const teamData = [
-  { name: "Vibe Coder", logo: GalleryVerticalEnd, plan: "Pro" },
-  { name: "Personal", logo: AudioWaveform, plan: "Free" },
-];
+export function AppSidebar() {
+  const [open, setOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
 
-const navMain = [
-  { title: "Chat Baru", url: "/chat", icon: MessageSquare },
-  { title: "Bantuan", url: "/support", icon: LifeBuoy },
-];
+  // Data User
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>("user");
+  const [userName, setUserName] = useState<string>("");
 
-// Data Dummy History (Nanti diganti DB)
-const chatHistory = [
-  { id: "1", title: "Membuat API Next.js", url: "#", date: "Baru saja" },
-  { id: "2", title: "Debug CSS Tailwind", url: "#", date: "Hari ini" },
-  { id: "3", title: "Setup Prisma & MySQL", url: "#", date: "Kemarin" },
-];
+  const supabase = createClient();
+  const router = useRouter();
 
-const adminMenu = [
-  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
-  { title: "Inbox Bantuan", url: "/admin/inbox", icon: MessageSquare },
-  { title: "Konten Bot", url: "/admin/knowledge", icon: BookOpen },
-  { title: "Pengaturan", url: "/admin/settings", icon: Settings },
-];
+  useEffect(() => {
+    async function fetchData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [activeTeam, setActiveTeam] = React.useState(teamData[0]);
+      if (user) {
+        setUserEmail(user.email || "");
 
-  // Cek Role Admin
-  const isAdmin = true;
+        const { data: userData } = await supabase
+          .from("User")
+          .select("role, name")
+          .eq("id", user.id)
+          .single();
+
+        if (userData) {
+          setUserRole(userData.role || "user");
+          setUserName(userData.name || "");
+          if (userData.role === "admin") setIsAdmin(true);
+        }
+
+        const { data: chatData } = await supabase
+          .from("Chat")
+          .select("id, title, createdAt")
+          .eq("userId", user.id)
+          .order("createdAt", { ascending: false })
+          .limit(10);
+
+        if (chatData) setHistory(chatData);
+      }
+    }
+    fetchData();
+  }, [supabase]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  };
+
+  const mainLinks = [
+    {
+      label: "Chat Baru",
+      href: "/",
+      icon: (
+        <IconMessage className="text-neutral-700 dark:text-neutral-200 h-6 w-6 shrink-0" />
+      ),
+    },
+    {
+      label: "Bantuan",
+      href: "/support",
+      icon: (
+        <IconHelp className="text-neutral-700 dark:text-neutral-200 h-6 w-6 shrink-0" />
+      ),
+    },
+  ];
+
+  const adminLinks = [
+    {
+      label: "Dashboard",
+      href: "/admin/dashboard",
+      icon: <IconLayoutDashboard className="text-blue-500 h-6 w-6 shrink-0" />,
+    },
+    {
+      label: "Inbox",
+      href: "/admin/inbox",
+      icon: <IconMessage className="text-blue-500 h-6 w-6 shrink-0" />,
+    },
+    {
+      label: "Knowledge",
+      href: "/admin/knowledge",
+      icon: <IconBook className="text-blue-500 h-6 w-6 shrink-0" />,
+    },
+    {
+      label: "Settings",
+      href: "/admin/settings",
+      icon: <IconSettings className="text-blue-500 h-6 w-6 shrink-0" />,
+    },
+  ];
+
+  const initial = (userName || userEmail || "U").charAt(0).toUpperCase();
+
   return (
-    <Sidebar
-      collapsible="icon"
-      {...props}
-      className="border-r border-white/10 w-[--sidebar-width]! transition-none"
-    >
-      {/* 1. HEADER: TEAM SWITCHER (KEMBALI!) */}
-      <SidebarHeader className="bg-zinc-950">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground hover:bg-zinc-800 text-white"
+    <Sidebar open={open} setOpen={setOpen}>
+      {/* SIDEBAR BODY: 
+         - md:rounded-3xl (Rounded di desktop)
+         - md:border (Border keliling di desktop)
+         - shadow-xl (Efek floating)
+      */}
+      <SidebarBody className="justify-between gap-10 bg-zinc-50 dark:bg-zinc-950 border-r md:border-r-0 md:border md:rounded-3xl border-zinc-200 dark:border-zinc-800 shadow-xl">
+        {/* --- ATAS: LOGO & MENU --- */}
+        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+          {open ? <Logo /> : <LogoIcon />}
+
+          <div className="mt-8 flex flex-col gap-2">
+            <p
+              className={cn(
+                "text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1 px-1",
+                !open && "hidden"
+              )}
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-indigo-600 text-sidebar-primary-foreground">
-                <activeTeam.logo className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">
-                  {activeTeam.name}
-                </span>
-                <span className="truncate text-xs text-zinc-400">
-                  {activeTeam.plan}
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-
-      {/* 2. CONTENT */}
-      <SidebarContent className="bg-zinc-950 text-zinc-300 overflow-x-hidden overflow-y-auto">
-        {/* MENU UTAMA */}
-        <SidebarGroup>
-          <SidebarMenu>
-            {navMain.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  asChild
-                  tooltip={item.title}
-                  className="hover:bg-zinc-800 hover:text-white"
-                >
-                  <a href={item.url}>
-                    <item.icon className="text-zinc-400" />
-                    <span>{item.title}</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              Menu
+            </p>
+            {mainLinks.map((link, idx) => (
+              <SidebarLink key={idx} link={link} />
             ))}
-          </SidebarMenu>
-        </SidebarGroup>
+          </div>
 
-        {/* SECTION: ADMIN (HANYA MUNCUL JIKA ADMIN) */}
-        {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-indigo-400 text-xs font-bold uppercase tracking-wider mt-2">
-              Admin Zone
-            </SidebarGroupLabel>
-            <SidebarMenu>
-              {adminMenu.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    tooltip={item.title}
-                    className="hover:bg-zinc-800 hover:text-white"
-                  >
-                    <a href={item.url}>
-                      <item.icon className="text-indigo-400" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+          {isAdmin && (
+            <div className="mt-6 flex flex-col gap-2">
+              <p
+                className={cn(
+                  "text-xs font-bold text-blue-500 uppercase tracking-wider mb-1 px-1",
+                  !open && "hidden"
+                )}
+              >
+                Admin Zone
+              </p>
+              {adminLinks.map((link, idx) => (
+                <SidebarLink key={idx} link={link} />
               ))}
-            </SidebarMenu>
-          </SidebarGroup>
-        )}
+            </div>
+          )}
 
-        {/* SECTION: HISTORY PERCAKAPAN (KEMBALI!) */}
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel className="text-zinc-500 text-xs font-bold uppercase tracking-wider mt-2">
-            Riwayat Percakapan
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {chatHistory.map((chat) => (
-              <SidebarMenuItem key={chat.id}>
-                <SidebarMenuButton
-                  asChild
-                  className="hover:bg-zinc-800 hover:text-white h-auto py-2"
-                >
-                  <a
-                    href={chat.url}
-                    className="flex flex-col items-start gap-1"
-                  >
-                    <div className="flex items-center gap-2 w-full">
-                      <MessageSquare className="size-4 text-zinc-500 shrink-0" />
-                      <span className="truncate font-medium">{chat.title}</span>
-                    </div>
-                    <span className="text-[10px] text-zinc-600 pl-6">
-                      {chat.date}
+          <div className="mt-6 flex flex-col gap-2">
+            <p
+              className={cn(
+                "text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1 px-1",
+                !open && "hidden"
+              )}
+            >
+              Riwayat
+            </p>
+            {history.length > 0
+              ? history.map((chat) => (
+                  <SidebarLink
+                    key={chat.id}
+                    link={{
+                      label: chat.title || "Percakapan",
+                      href: `/chat/${chat.id}`,
+                      icon: (
+                        <IconHistory className="text-zinc-500 h-6 w-6 shrink-0 group-hover:text-blue-500 transition-colors" />
+                      ),
+                    }}
+                  />
+                ))
+              : open && (
+                  <span className="text-xs text-zinc-500 px-2">
+                    Belum ada riwayat
+                  </span>
+                )}
+          </div>
+        </div>
+
+        {/* --- BAWAH: USER PROFILE (DROPDOWN) --- */}
+        <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 -mx-2 px-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-3 w-full p-2 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all group outline-none",
+                  !open && "justify-center"
+                )}
+              >
+                {/* AVATAR */}
+                <Avatar className="h-10 w-10 border border-zinc-300 dark:border-zinc-700 shrink-0">
+                  <AvatarFallback className="bg-blue-600 text-white font-bold text-sm">
+                    {initial}
+                  </AvatarFallback>
+                </Avatar>
+
+                {/* INFO USER (Hanya muncul saat Open) */}
+                {open && (
+                  <div className="flex flex-col items-start text-left overflow-hidden">
+                    <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate w-40">
+                      {userEmail}
                     </span>
-                  </a>
-                </SidebarMenuButton>
-                <SidebarMenuAction
-                  showOnHover
-                  className="text-zinc-500 hover:text-white"
-                >
-                  <MoreHorizontal />
-                </SidebarMenuAction>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="border-t border-white/10 p-4 bg-zinc-950">
-        <AuthButton />
-      </SidebarFooter>
+                    <span className="text-[12px] font-bold">{userRole}</span>
+                  </div>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+
+            {/* DROPDOWN CONTENT (Sign Out) */}
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="w-56 mb-2 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 ml-1"
+            >
+              <div className="px-2 py-1.5 border-b border-zinc-100 dark:border-zinc-800 mb-1">
+                <p className="text-sm font-medium text-black dark:text-white">
+                  Akun Saya
+                </p>
+                <p className="text-xs text-zinc-500 truncate">{userEmail}</p>
+              </div>
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20 cursor-pointer gap-2"
+              >
+                <LogOut size={16} />
+                <span>Sign Out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </SidebarBody>
     </Sidebar>
   );
 }
+
+// LOGO COMPONENTS
+export const Logo = () => (
+  <a
+    href="/"
+    className="font-normal flex space-x-2 items-center text-sm text-black py-1 relative z-20 pl-1"
+  >
+    <div className="h-6 w-6 bg-blue-600 rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm shrink-0" />
+    <motion.span
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="font-bold text-lg text-black dark:text-white whitespace-pre"
+    >
+      Vibe Coder
+    </motion.span>
+  </a>
+);
+
+export const LogoIcon = () => (
+  <a
+    href="/"
+    className="font-normal flex space-x-2 items-center text-sm text-black py-1 relative z-20 pl-1"
+  >
+    <div className="h-6 w-6 bg-blue-600 rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm shrink-0" />
+  </a>
+);

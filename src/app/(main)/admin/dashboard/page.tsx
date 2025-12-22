@@ -2,8 +2,9 @@ import { StatsOverview } from "@/components/admin/StatsOverview";
 import { AdminInbox } from "@/components/admin/AdminInbox";
 import { QuickSettings } from "@/components/admin/QuickSettings";
 import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
+import { requireAdmin } from "@/utils/check-role";
 
-// MOCK DATA (Nanti ini diganti hasil fetch DB Prisma)
+// ... (Mock Data biarkan sama) ...
 const mockStats = {
   totalChat: 142,
   adminRequests: 3,
@@ -17,7 +18,7 @@ const mockTickets = [
     id: "1",
     user: "Rudi",
     category: "Teknis",
-    summary: "Error saat upload file PDF",
+    summary: "Error PDF",
     status: "BARU" as const,
     time: "5m lalu",
   },
@@ -25,7 +26,7 @@ const mockTickets = [
     id: "2",
     user: "Siti",
     category: "Billing",
-    summary: "Ingin upgrade ke paket Pro",
+    summary: "Upgrade Pro",
     status: "DIPROSES" as const,
     time: "1j lalu",
   },
@@ -33,16 +34,21 @@ const mockTickets = [
     id: "3",
     user: "Budi",
     category: "Lainnya",
-    summary: "Tanya fitur API",
+    summary: "Tanya API",
     status: "SELESAI" as const,
     time: "2j lalu",
   },
 ];
 
-export default function AdminDashboard() {
+// Ubah function jadi ASYNC agar bisa panggil database
+export default async function AdminDashboard() {
+  // ⛔ PASANG SATPAM DI SINI
+  // Kode ini akan menendang user biasa kembali ke Home
+  await requireAdmin();
+
   return (
     <div className="flex flex-col h-full p-6 space-y-6 overflow-y-auto bg-background">
-      {/* Header Dashboard */}
+      {/* ... (Sisa codingan UI biarkan sama persis) ... */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
@@ -53,23 +59,19 @@ export default function AdminDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <ThemeTogglerButton /> {/* Tombol Dark/Light Mode */}
+          <ThemeTogglerButton />
           <span className="text-xs font-medium text-green-600 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20 animate-pulse">
             System Operational
           </span>
         </div>
       </div>
 
-      {/* 1. Stats Cards (Pass Data via Props) */}
       <StatsOverview {...mockStats} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 2. Inbox (Lebar 2 kolom) */}
         <div className="lg:col-span-2 h-125">
           <AdminInbox tickets={mockTickets} />
         </div>
-
-        {/* 3. Settings (Lebar 1 kolom) */}
         <div className="lg:col-span-1 h-full">
           <QuickSettings />
         </div>
