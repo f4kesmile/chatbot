@@ -1,23 +1,75 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  MoreHorizontal,
+} from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-// Interface agar strict type
 interface Ticket {
   id: string;
-  user: string;
   category: string;
-  summary: string;
+  summary: string | null;
   status: "BARU" | "DIPROSES" | "SELESAI";
-  time: string;
+  createdAt: string;
+  user: {
+    email: string;
+  };
 }
 
-interface AdminInboxProps {
-  tickets: Ticket[];
-}
+export function AdminInbox() {
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const supabase = createClient();
 
-export function AdminInbox({ tickets }: AdminInboxProps) {
-  // Helper untuk warna badge status
+  useEffect(() => {
+    fetchTickets();
+  }, []);
+
+  async function fetchTickets() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("Ticket")
+      .select(
+        `
+        id, category, summary, status, createdAt,
+        user:User(email)
+      `
+      )
+      .order("createdAt", { ascending: false });
+
+    if (!error && data) {
+      // Mapping data (karena join user mengembalikan object/array)
+      const formattedData = data.map((t: any) => ({
+        ...t,
+        user: t.user || { email: "Unknown" },
+      }));
+      setTickets(formattedData);
+    }
+    setLoading(false);
+  }
+
+  async function updateStatus(id: string, newStatus: string) {
+    // Optimistic Update
+    setTickets((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status: newStatus as any } : t))
+    );
+    // DB Update
+    await supabase.from("Ticket").update({ status: newStatus }).eq("id", id);
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "BARU":
@@ -28,7 +80,10 @@ export function AdminInbox({ tickets }: AdminInboxProps) {
         );
       case "DIPROSES":
         return (
-          <Badge variant="secondary" className="gap-1">
+          <Badge
+            variant="secondary"
+            className="gap-1 bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+          >
             <Clock className="h-3 w-3" /> Proses
           </Badge>
         );
@@ -51,17 +106,28 @@ export function AdminInbox({ tickets }: AdminInboxProps) {
       <div className="p-4 border-b flex justify-between items-center bg-muted/20">
         <h3 className="font-semibold flex items-center gap-2">
           Inbox Bantuan
-          <Badge variant="secondary" className="rounded-full px-2">
-            {tickets.length}
-          </Badge>
+          {!loading && (
+            <Badge variant="secondary" className="rounded-full px-2">
+              {tickets.length}
+            </Badge>
+          )}
         </h3>
-        <Button variant="ghost" size="sm" className="h-8 text-xs">
-          Lihat Semua
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={fetchTickets}
+        >
+          Refresh
         </Button>
       </div>
 
       <div className="divide-y overflow-y-auto flex-1">
-        {tickets.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="animate-spin text-muted-foreground" />
+          </div>
+        ) : tickets.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm">
             Tidak ada tiket baru.
           </div>
@@ -71,26 +137,46 @@ export function AdminInbox({ tickets }: AdminInboxProps) {
               key={ticket.id}
               className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
             >
-              <div className="flex gap-4 items-start">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{ticket.user}</span>
-                    {getStatusBadge(ticket.status)}
-                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> {ticket.time}
-                    </span>
-                  </div>
-                  <p className="text-sm text-foreground/80 font-medium">
-                    {ticket.summary}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Kategori: {ticket.category}
-                  </p>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">{ticket.user.email}</span>
+                  {getStatusBadge(ticket.status)}
+                  <span className="text-[10px] text-muted-foreground ml-2">
+                    {new Date(ticket.createdAt).toLocaleDateString()}
+                  </span>
                 </div>
+                <p className="text-sm text-foreground/80 font-medium line-clamp-1">
+                  {ticket.summary || "Tanpa ringkasan"}
+                </p>
+                <Badge variant="outline" className="text-[10px] py-0 h-5">
+                  {ticket.category}
+                </Badge>
               </div>
-              <Button size="sm" variant="secondary">
-                Detail
-              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => updateStatus(ticket.id, "BARU")}
+                  >
+                    Set Baru
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => updateStatus(ticket.id, "DIPROSES")}
+                  >
+                    Set Proses
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => updateStatus(ticket.id, "SELESAI")}
+                  >
+                    Set Selesai
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))
         )}

@@ -93,6 +93,13 @@ export function AppSidebar() {
         <IconHelp className="text-neutral-700 dark:text-neutral-200 h-6 w-6 shrink-0" />
       ),
     },
+    {
+      label: "Pengaturan",
+      href: "/settings",
+      icon: (
+        <IconSettings className="text-neutral-700 dark:text-neutral-200 h-6 w-6 shrink-0" />
+      ),
+    },
   ];
 
   const adminLinks = [
@@ -197,6 +204,7 @@ export function AppSidebar() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
+                suppressHydrationWarning
                 className={cn(
                   "flex items-center gap-3 w-full p-2 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all group outline-none",
                   !open && "justify-center"

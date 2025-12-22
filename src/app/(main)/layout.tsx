@@ -1,5 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
 import { AuthButton } from "@/components/auth-button"; // Avatar untuk kanan atas
 
 export default function MainLayout({
@@ -18,7 +18,7 @@ export default function MainLayout({
         {/* LAYOUT POJOK KANAN ATAS: Theme Toggler + Avatar */}
         <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
           <div className="flex items-center gap-2 bg-white/50 dark:bg-black/50 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-full p-1 shadow-none">
-            <ThemeToggle />
+            <ThemeTogglerButton />
             <div className="h-5 w-px bg-zinc-300 dark:bg-zinc-700 mx-1" />
             <AuthButton />
           </div>
