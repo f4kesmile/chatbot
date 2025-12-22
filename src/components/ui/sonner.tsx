@@ -12,6 +12,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      richColors // <--- INI KUNCINYA (Warna Otomatis)
+      position="top-center" // <--- POSISI DI ATAS
+      closeButton // <--- Tombol Close (Opsional tapi bagus)
       toastOptions={{
         classNames: {
           toast:
@@ -21,6 +24,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
             "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton:
             "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          // Kustomisasi warna spesifik jika richColors kurang pas (Opsional)
+          // error: "bg-red-500 text-white border-red-600",
+          // success: "bg-green-500 text-white border-green-600",
         },
       }}
       {...props}

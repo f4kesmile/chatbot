@@ -6,18 +6,13 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function getDatabaseUrl() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "DATABASE_URL is missing. Set it in .env (Supabase Postgres connection string)."
-    );
-  }
-  return url;
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is missing in environment (.env).");
 }
 
 const adapter = new PrismaPg({
-  connectionString: getDatabaseUrl(),
+  connectionString: databaseUrl,
 });
 
 export const prisma =

@@ -2,8 +2,6 @@ import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma"; 
 
-console.log("PRISMA MODULE LOADED FROM:", __filename);
-
 export async function requireAdmin() {
   const supabase = await createClient();
   

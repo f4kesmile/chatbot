@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -6,18 +7,41 @@ import { cn } from "@/lib/utils";
 import { IconBrandGoogle } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { toast } from "sonner";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 export function SignupForm() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null); // 2. State
 
   const router = useRouter();
   const supabase = createClient();
 
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/api/auth/callback`,
+      },
+    });
+
+    if (error) {
+      toast.error("Gagal Login Google", { description: error.message });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    // 3. Cek Captcha
+    if (!captchaToken) {
+      toast.error("Mohon selesaikan verifikasi Captcha.");
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
@@ -27,18 +51,23 @@ export function SignupForm() {
         data: {
           full_name: fullName,
         },
+        captchaToken: captchaToken, // 4. Kirim Token
       },
     });
 
     if (error) {
-      alert("Gagal Daftar: " + error.message);
+      toast.error("Gagal Daftar", { description: error.message });
     } else {
       if (data.session) {
-        alert("Pendaftaran Berhasil! Mengarahkan ke Home...");
+        toast.success("Pendaftaran Berhasil!", {
+          description: "Mengarahkan ke dashboard...",
+        });
         router.push("/");
         router.refresh();
       } else {
-        alert("Sukses! Silakan cek email kamu untuk verifikasi.");
+        toast.success("Sukses Mendaftar!", {
+          description: "Silakan cek email kamu untuk verifikasi.",
+        });
       }
     }
     setLoading(false);
@@ -90,7 +119,19 @@ export function SignupForm() {
           />
         </LabelInputContainer>
 
-        {/* TOMBOL UTAMA (PRIMARY COLOR) */}
+        {/* 5. Komponen Turnstile */}
+        <div className="mb-6 flex justify-center">
+          <Turnstile
+            siteKey={process.env.NEXT_PUBLIC_CLOUDFLARE_SITE_KEY || ""}
+            onSuccess={(token) => setCaptchaToken(token)}
+            onError={() => toast.error("Gagal memuat Captcha")}
+            options={{
+              theme: "auto",
+              size: "flexible",
+            }}
+          />
+        </div>
+
         <button
           className="group/btn relative flex justify-center items-center h-10 w-full rounded-md font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           type="submit"
@@ -103,11 +144,10 @@ export function SignupForm() {
         <div className="bg-gradient-to-r from-transparent via-neutral-300 dark:via-neutral-700 to-transparent my-8 h-[1px] w-full" />
 
         <div className="flex flex-col space-y-4">
-          {/* TOMBOL GOOGLE (TIMBUL / 3D EFFECT) */}
           <button
             className="relative group/btn flex space-x-2 items-center justify-center px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all hover:-translate-y-0.5 hover:shadow-lg"
             type="button"
-            onClick={() => alert("Fitur Google Login belum diaktifkan")}
+            onClick={handleGoogleLogin}
           >
             <IconBrandGoogle className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
             <span className="text-neutral-700 dark:text-neutral-300 text-sm">
@@ -116,7 +156,6 @@ export function SignupForm() {
             <BottomGradient />
           </button>
 
-          {/* LINK TEXT ONLY (CLEAN) */}
           <div className="text-center mt-4">
             <button
               type="button"

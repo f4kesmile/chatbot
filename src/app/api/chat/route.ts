@@ -1,36 +1,64 @@
+import { createClient } from "@/utils/supabase/server";
+import { prisma } from "@/lib/prisma";
+
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json();
+    const supabase = await createClient();
+    
+    // 1. Cek User Auth
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
 
-    // 1. Cleaning Data (Wajib)
-    const cleanMessages = messages.map((m: any) => {
-      let content = m.content;
-      if (!content && m.parts) {
-        content = m.parts
-          .filter((part: any) => part.type === 'text')
-          .map((part: any) => part.text)
-          .join('');
-      }
-      return {
-        role: m.role,
-        content: content || '', 
-      };
+    const { messages, chatId } = await req.json();
+    
+    // Ambil pesan terakhir dari user
+    const lastUserMessage = messages[messages.length - 1];
+    const userContent = lastUserMessage.content;
+
+    let currentChatId = chatId;
+
+    // 2. Jika Chat ID belum ada (Chat Baru), Buat di DB
+    if (!currentChatId) {
+      // Buat Judul Otomatis (Ambil 40 karakter pertama pesan user)
+      const autoTitle = userContent.length > 40 
+        ? userContent.substring(0, 40) + "..." 
+        : userContent;
+
+      const newChat = await prisma.chat.create({
+        data: {
+          userId: user.id,
+          title: autoTitle, 
+        },
+      });
+      currentChatId = newChat.id;
+    }
+
+    // 3. Simpan Pesan USER ke DB
+    await prisma.message.create({
+      data: {
+        chatId: currentChatId,
+        role: "USER",
+        content: userContent,
+      },
     });
 
-    console.log("📨 Mengirim request Manual ke OpenRouter...");
+    // 4. Request ke AI (OpenRouter)
+    const cleanMessages = messages.map((m: any) => ({
+      role: m.role,
+      content: m.content || "",
+    }));
 
-    // 2. FETCH MANUAL (Bypass Library AI SDK)
-    // Kita tembak langsung API OpenRouter layaknya kirim data biasa.
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        // Wajib untuk OpenRouter Free Tier
-        "HTTP-Referer": "http://localhost:3000", 
-        "X-Title": "My Local Chatbot", 
+        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+        "X-Title": "Vibe Coder",
       },
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL || "meta-llama/llama-3-8b-instruct:free",
@@ -38,24 +66,32 @@ export async function POST(req: Request) {
       }),
     });
 
-    // Cek jika OpenRouter Error
     if (!response.ok) {
-      const errorData = await response.text(); // Baca text mentah biar tau errornya apa
-      console.error("❌ OpenRouter Error:", errorData);
-      return new Response(`Error dari OpenRouter: ${response.status}`, { status: 500 });
+      const errorText = await response.text();
+      return new Response("Error dari AI Provider", { status: 500 });
     }
 
-    // 3. Ambil Datanya
     const data = await response.json();
-    const botReply = data.choices?.[0]?.message?.content || "Maaf, tidak ada jawaban.";
+    const botReply = data.choices?.[0]?.message?.content || "Maaf, saya tidak bisa menjawab.";
 
-    console.log("✅ AI Menjawab:", botReply.substring(0, 30) + "...");
+    // 5. Simpan Pesan ASSISTANT ke DB
+    await prisma.message.create({
+      data: {
+        chatId: currentChatId,
+        role: "ASSISTANT",
+        content: botReply,
+      },
+    });
 
-    // 4. Kirim ke Frontend
-    return new Response(botReply);
+    // 6. Return Response ke Frontend
+    return new Response(JSON.stringify({ 
+      reply: botReply, 
+      chatId: currentChatId 
+    }), {
+      headers: { "Content-Type": "application/json" }
+    });
 
   } catch (error) {
-    console.error("❌ Error System:", error);
     return new Response("Terjadi kesalahan sistem.", { status: 500 });
   }
 }

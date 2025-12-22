@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { User } from "@supabase/supabase-js";
-import { LogOut, Loader2, User as UserIcon } from "lucide-react";
+import { LogOut, Loader2 } from "lucide-react";
+import { toast } from "sonner"; // <--- Import Sonner
 
-// Import komponen Shadcn UI yang lebih stabil
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,18 +46,25 @@ export function AuthButton() {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase, router]);
+  }, []);
 
   const handleLogout = async () => {
-    // 1. Logout dari Supabase
-    await supabase.auth.signOut();
+    // 1. Logout dari Supabase dengan error handling
+    const { error } = await supabase.auth.signOut();
 
-    // 2. Reset state lokal
-    setUser(null);
+    if (error) {
+      toast.error("Gagal Logout", { description: error.message });
+    } else {
+      // 2. Tampilkan Notifikasi Sukses (Hijau Pekat)
+      toast.success("Berhasil Logout", {
+        description: "Sampai jumpa lagi!",
+      });
 
-    // 3. Paksa redirect ke Login
-    router.replace("/login");
-    router.refresh();
+      // 3. Reset state & Redirect
+      setUser(null);
+      router.replace("/login");
+      router.refresh();
+    }
   };
 
   if (loading) {
@@ -75,7 +82,6 @@ export function AuthButton() {
     );
   }
 
-  // Ambil inisial nama/email
   const initial =
     user.user_metadata?.full_name?.charAt(0) ||
     user.email?.charAt(0).toUpperCase() ||
@@ -83,11 +89,9 @@ export function AuthButton() {
 
   return (
     <DropdownMenu>
-      {/* TRIGGER: Avatar yang diklik */}
       <DropdownMenuTrigger asChild>
         <button className="relative h-9 w-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white hover:bg-zinc-700 transition focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-zinc-950">
           <Avatar className="h-9 w-9">
-            {/* Jika nanti ada foto profil, pakai AvatarImage disini */}
             <AvatarFallback className="bg-blue-600 text-white font-bold">
               {initial}
             </AvatarFallback>
@@ -95,7 +99,6 @@ export function AuthButton() {
         </button>
       </DropdownMenuTrigger>
 
-      {/* CONTENT: Isi Menu (Otomatis muncul di layer teratas) */}
       <DropdownMenuContent
         className="w-56 bg-zinc-900 border-zinc-800 text-zinc-200"
         align="end"
@@ -114,7 +117,6 @@ export function AuthButton() {
 
         <DropdownMenuSeparator className="bg-zinc-800" />
 
-        {/* Tombol Logout - Pasti bisa diklik karena pakai standard item */}
         <DropdownMenuItem
           onClick={handleLogout}
           className="text-red-400 focus:text-red-400 focus:bg-zinc-800 cursor-pointer"

@@ -8,13 +8,14 @@ import {
   IconLayoutDashboard,
   IconSettings,
   IconBook,
-  IconHistory,
 } from "@tabler/icons-react";
 import { LogOut } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { ChatHistoryList } from "@/components/chat/ChatHistoryList";
 
 // Dropdown & Avatar
 import {
@@ -28,7 +29,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 export function AppSidebar() {
   const [open, setOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
 
   // Data User
   const [userEmail, setUserEmail] = useState<string>("");
@@ -59,23 +59,25 @@ export function AppSidebar() {
           if (userData.role === "admin") setIsAdmin(true);
         }
 
-        const { data: chatData } = await supabase
-          .from("Chat")
-          .select("id, title, createdAt")
-          .eq("userId", user.id)
-          .order("createdAt", { ascending: false })
-          .limit(10);
-
-        if (chatData) setHistory(chatData);
+        // HAPUS FETCH CHAT LAMA DARI SINI
       }
     }
     fetchData();
-  }, [supabase]);
+  }, []);
 
+  // FUNGSI LOGOUT DENGAN NOTIFIKASI
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.replace("/login");
-    router.refresh();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      toast.error("Gagal Logout", { description: error.message });
+    } else {
+      toast.success("Berhasil Logout", {
+        description: "Sampai jumpa lagi!",
+      });
+      router.replace("/login");
+      router.refresh();
+    }
   };
 
   const mainLinks = [
@@ -129,11 +131,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      {/* SIDEBAR BODY: 
-         - md:rounded-3xl (Rounded di desktop)
-         - md:border (Border keliling di desktop)
-         - shadow-xl (Efek floating)
-      */}
+      {/* SIDEBAR BODY */}
       <SidebarBody className="justify-between gap-10 bg-zinc-50 dark:bg-zinc-950 border-r md:border-r-0 md:border md:rounded-3xl border-zinc-200 dark:border-zinc-800 shadow-xl">
         {/* --- ATAS: LOGO & MENU --- */}
         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
@@ -178,24 +176,14 @@ export function AppSidebar() {
             >
               Riwayat
             </p>
-            {history.length > 0
-              ? history.map((chat) => (
-                  <SidebarLink
-                    key={chat.id}
-                    link={{
-                      label: chat.title || "Percakapan",
-                      href: `/chat/${chat.id}`,
-                      icon: (
-                        <IconHistory className="text-zinc-500 h-6 w-6 shrink-0 group-hover:text-blue-500 transition-colors" />
-                      ),
-                    }}
-                  />
-                ))
-              : open && (
-                  <span className="text-xs text-zinc-500 px-2">
-                    Belum ada riwayat
-                  </span>
-                )}
+
+            {/* 2. PASANG KOMPONEN RIWAYAT DI SINI */}
+            {/* Kita bungkus dengan logic agar rapi saat sidebar tertutup */}
+            <div className={cn(!open ? "hidden" : "block")}>
+              <ChatHistoryList />
+            </div>
+
+            {/* Fallback Icon jika sidebar tertutup (Opsional, agar tidak kosong melompong) */}
           </div>
         </div>
 
