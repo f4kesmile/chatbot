@@ -45,11 +45,13 @@ export default async function ChatPage({ params }: ChatPageProps) {
   }
 
   // 3. Format pesan
-  const initialMessages = chat.messages.map((msg) => ({
-    id: msg.id,
-    role: msg.role.toLowerCase() as "user" | "assistant",
-    content: msg.content,
-  }));
+  const initialMessages = chat.messages.map(
+    (msg: { id: string; role: string; content: string }) => ({
+      id: String(msg.id),
+      role: msg.role.toLowerCase() as "user" | "assistant",
+      content: msg.content,
+    })
+  );
 
   // 4. Render Client Component
   return <ChatClient initialMessages={initialMessages} chatId={chat.id} />;
