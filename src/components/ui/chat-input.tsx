@@ -75,7 +75,7 @@ export function ChatInput({
             placeholder={placeholder}
             rows={1}
             className={cn(
-              "w-full bg-transparent text-sm px-4 py-3 min-h-[48px] max-h-[200px] resize-none focus:outline-none scrollbar-hide",
+              "w-full bg-transparent text-base md:text-sm px-4 py-3 min-h-[48px] max-h-[200px] resize-none focus:outline-none scrollbar-hide",
               // Text Colors
               "text-zinc-800 placeholder:text-zinc-400",
               "dark:text-zinc-100 dark:placeholder:text-zinc-500"

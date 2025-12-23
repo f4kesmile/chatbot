@@ -97,25 +97,28 @@ export function ChatClient({
   };
 
   return (
+    // Gunakan h-[100dvh] untuk tinggi dinamis browser HP
     <div className="flex flex-col h-full w-full relative font-sans bg-transparent">
       <BackgroundGrid />
 
       {/* CHAT AREA */}
       <div className="flex-1 overflow-hidden relative z-10">
-        <ScrollArea className="h-full px-4 md:px-8">
-          <div className="mx-auto max-w-3xl space-y-8 py-10 pb-4">
-            {/* EMPTY STATE (Hanya muncul jika belum ada pesan sama sekali) */}
+        <ScrollArea className="h-full">
+          {/* Padding horizontal dikurangi di mobile (px-4) agar space lebih luas */}
+          {/* Padding bottom (pb-32) diperbesar agar chat terakhir tidak ketutup input */}
+          <div className="flex flex-col w-full max-w-3xl mx-auto px-4 md:px-8 py-4 pb-32 space-y-6">
+            {/* EMPTY STATE */}
             {messages.length === 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center justify-center space-y-4 pt-40 text-center"
+                className="flex flex-col items-center justify-center space-y-4 pt-20 md:pt-40 text-center px-4"
               >
                 <div className="space-y-2">
-                  <h2 className="text-3xl font-bold text-foreground tracking-tight">
+                  <h2 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
                     Ada yang bisa saya bantu?
                   </h2>
-                  <p className="text-muted-foreground text-base max-w-md mx-auto">
+                  <p className="text-muted-foreground text-sm md:text-base max-w-md mx-auto">
                     Saya siap membantu tugasmu, menjawab pertanyaan, atau
                     sekadar mengobrol santai.
                   </p>
@@ -129,22 +132,22 @@ export function ChatClient({
                 key={m.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex gap-4 ${
+                className={`flex gap-3 md:gap-4 ${
                   m.role === "user" ? "justify-end" : "justify-start"
                 }`}
               >
-                {/* Bot Avatar */}
+                {/* Bot Avatar - Hide on tiny mobile screens if needed, but keeping generally ok */}
                 {m.role !== "user" && (
-                  <Avatar className="h-9 w-9 border border-border mt-1 shadow-sm">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
+                  <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-border mt-1 shrink-0 shadow-sm">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-[10px] md:text-xs font-bold">
                       VC
                     </AvatarFallback>
                   </Avatar>
                 )}
 
-                {/* Bubble Chat */}
+                {/* Bubble Chat - Max width adjusted for mobile */}
                 <div
-                  className={`rounded-2xl px-5 py-3.5 text-[15px] shadow-sm max-w-[85%] md:max-w-[75%] leading-relaxed ${
+                  className={`rounded-2xl px-4 py-2.5 md:px-5 md:py-3.5 text-sm md:text-[15px] shadow-sm max-w-[85%] md:max-w-[75%] leading-relaxed break-words ${
                     m.role === "user"
                       ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20 rounded-tr-sm"
                       : "bg-secondary border border-border text-foreground rounded-tl-sm"
@@ -155,15 +158,15 @@ export function ChatClient({
               </motion.div>
             ))}
 
-            {/* LOADING */}
+            {/* LOADING INDICATOR */}
             {isLoading && (
-              <div className="flex gap-4">
-                <Avatar className="h-9 w-9 border border-border">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
+              <div className="flex gap-3 md:gap-4">
+                <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-border shrink-0">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
                     VC
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex items-center space-x-3 bg-secondary px-5 py-4 rounded-2xl border border-border rounded-tl-sm">
+                <div className="flex items-center space-x-3 bg-secondary px-4 py-3 rounded-2xl border border-border rounded-tl-sm">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-sm text-muted-foreground font-medium">
                     Sedang berpikir...
@@ -176,8 +179,9 @@ export function ChatClient({
         </ScrollArea>
       </div>
 
-      {/* INPUT AREA */}
-      <div className="p-4 md:p-6 pt-0 bg-transparent z-20">
+      {/* INPUT AREA FIX */}
+      {/* Position sticky atau fixed di mobile kadang buggy, structure flex-col + flex-1 di atas lebih aman */}
+      <div className="p-3 md:p-6 pt-0 bg-transparent z-20 w-full max-w-3xl mx-auto">
         <ChatInput onSend={handleSend} isLoading={isLoading} />
       </div>
     </div>
