@@ -2,23 +2,19 @@ import { prisma } from "@/lib/prisma";
 import { ChatClient } from "@/components/chat/chat-client";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { Prisma } from "@prisma/client";
+import type { Chat, Message } from "@prisma/client";
 
 interface ChatPageProps {
-  // Next.js App Router umumnya memberikan object, bukan Promise.
-  // Namun kalau project Anda memang memakai Promise, Anda bisa balikin ke Promise seperti sebelumnya.
-  params: { id: string };
+  // Jika di project Anda params memang Promise, biarkan seperti ini.
+  // Jika tidak, ubah ke: params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-// Payload type: Chat + messages (dengan field yang Prisma tahu)
-type ChatWithMessages = Prisma.ChatGetPayload<{
-  include: {
-    messages: true;
-  };
-}>;
+// Hardened typing: messages tidak akan pernah jadi any
+type ChatWithMessages = Chat & { messages: Message[] };
 
 export default async function ChatPage({ params }: ChatPageProps) {
-  const { id } = params;
+  const { id } = await params;
 
   const supabase = await createClient();
   const {
@@ -52,6 +48,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
     );
   }
 
+  // msg sekarang ter-infer sebagai Message tanpa (msg: Message)
   const initialMessages = chat.messages.map((msg) => ({
     id: String(msg.id),
     role: msg.role.toLowerCase() as "user" | "assistant",
