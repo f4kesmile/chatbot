@@ -2,13 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { ChatClient } from "@/components/chat/chat-client";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { Message } from "@prisma/client";
 
 interface ChatPageProps {
-  params: Promise<{ id: string }>; // Update Tipe Params jadi Promise
+  params: Promise<{ id: string }>;
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
-  // 1. AWAIT PARAMS DULU (Wajib di Next.js 15)
   const { id } = await params;
 
   const supabase = await createClient();
@@ -20,11 +20,10 @@ export default async function ChatPage({ params }: ChatPageProps) {
     redirect("/login");
   }
 
-  // 2. Gunakan 'id' yang sudah di-unwrap (bukan params.id lagi)
   const chat = await prisma.chat.findUnique({
     where: {
       id: id,
-      userId: user.id, // Keamanan: Pastikan user hanya buka chat miliknya
+      userId: user.id,
     },
     include: {
       messages: {
@@ -44,15 +43,12 @@ export default async function ChatPage({ params }: ChatPageProps) {
     );
   }
 
-  // 3. Format pesan
-  const initialMessages = chat.messages.map(
-    (msg: { id: string; role: string; content: string }) => ({
-      id: String(msg.id),
-      role: msg.role.toLowerCase() as "user" | "assistant",
-      content: msg.content,
-    })
-  );
+  // 3. FORMAT PESAN (CARA ELEGAN & AMAN)
+  const initialMessages = chat.messages.map((msg: Message) => ({
+    id: String(msg.id),
+    role: msg.role.toLowerCase() as "user" | "assistant",
+    content: msg.content,
+  }));
 
-  // 4. Render Client Component
   return <ChatClient initialMessages={initialMessages} chatId={chat.id} />;
 }
