@@ -1,18 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Plus, Search, Trash2, BookOpen, Save, Loader2 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
-import { toast } from "sonner"; // Menggunakan Sonner
+import { toast } from "sonner";
+
+type KnowledgeItem = {
+  id: string;
+  title: string;
+  content: string;
+  category?: string | null;
+  updatedAt?: string | null;
+};
 
 export default function KnowledgePage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(true);
-  const [knowledgeList, setKnowledgeList] = useState<any[]>([]);
+  const [knowledgeList, setKnowledgeList] = useState<KnowledgeItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Form State
@@ -20,19 +28,24 @@ export default function KnowledgePage() {
   const [newInfoContent, setNewInfoContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchKnowledge();
-  }, []);
-
-  async function fetchKnowledge() {
+  const fetchKnowledge = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
       .from("KnowledgeBase")
       .select("*")
       .order("updatedAt", { ascending: false });
-    if (data) setKnowledgeList(data);
+
+    if (data) setKnowledgeList(data as unknown as KnowledgeItem[]);
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchKnowledge();
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [fetchKnowledge]);
 
   async function addKnowledge() {
     if (!newInfoTitle || !newInfoContent) {
@@ -53,7 +66,7 @@ export default function KnowledgePage() {
       toast.success("Knowledge base berhasil ditambahkan");
       setNewInfoTitle("");
       setNewInfoContent("");
-      fetchKnowledge();
+      await fetchKnowledge();
     } else {
       toast.error("Gagal menyimpan data");
     }

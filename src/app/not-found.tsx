@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react"; // Tambah import ini
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Home } from "lucide-react";
@@ -153,7 +153,6 @@ const AnimatedRobotSVG = () => {
 
 // --- FIXED: BACKGROUND PARTIKEL ANIMASI ---
 const FloatingParticles = () => {
-  // Definisi tipe data state
   const [particles, setParticles] = useState<
     Array<{
       width: string;
@@ -165,7 +164,6 @@ const FloatingParticles = () => {
     }>
   >([]);
 
-  // Generate random values HANYA di client (useEffect)
   useEffect(() => {
     const newParticles = Array.from({ length: 15 }).map(() => ({
       width: Math.random() * 20 + 5 + "px",
@@ -175,7 +173,12 @@ const FloatingParticles = () => {
       duration: Math.random() * 10 + 10,
       delay: Math.random() * 5,
     }));
-    setParticles(newParticles);
+
+    const raf = requestAnimationFrame(() => {
+      setParticles(newParticles);
+    });
+
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return (
@@ -207,17 +210,14 @@ const FloatingParticles = () => {
   );
 };
 
-// --- HALAMAN UTAMA ---
 export default function NotFound() {
   return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-950 text-zinc-50 px-4 relative overflow-hidden font-sans selection:bg-blue-500/30">
-      {/* 1. BACKGROUND FULL ANIMASI */}
       <FloatingParticles />
 
       <div className="absolute inset-0 bg-radial-gradient-to-t from-zinc-950 via-transparent to-transparent opacity-80 pointer-events-none" />
 
       <div className="max-w-lg w-full text-center space-y-8 relative z-10">
-        {/* 2. SVG ROBOT ANIMASI TOTAL */}
         <motion.div
           initial={{ scale: 0.5, opacity: 0, y: 50 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -227,7 +227,6 @@ export default function NotFound() {
           <AnimatedRobotSVG />
         </motion.div>
 
-        {/* 3. TEKS ANIMASI BERNAFAS */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -250,7 +249,6 @@ export default function NotFound() {
           </p>
         </motion.div>
 
-        {/* 4. TOMBOL ANIMASI */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -281,7 +279,6 @@ export default function NotFound() {
         </motion.div>
       </div>
 
-      {/* Footer Terminal */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

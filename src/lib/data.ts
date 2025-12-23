@@ -1,16 +1,10 @@
 import {
-  AudioWaveform,
-  Home,
-  Inbox,
-  Search,
   Sparkles,
-  GalleryVerticalEnd,
   Command,
-  MessageSquare,
   Code2,
   Settings,
   LayoutDashboard,
-  FolderGit2
+  FolderGit2,
 } from "lucide-react";
 
 // Simulasi Data User & Tim

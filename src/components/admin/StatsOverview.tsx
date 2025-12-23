@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MessageCircle,
   AlertCircle,
@@ -10,8 +10,7 @@ import {
   Activity,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
-import { toast } from "sonner"; // Pakai Sonner
-import Link from "next/link"; // Untuk navigasi
+import Link from "next/link";
 
 export function StatsOverview() {
   const [stats, setStats] = useState({
@@ -22,17 +21,9 @@ export function StatsOverview() {
     registeredUsers: 0,
   });
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
-  useEffect(() => {
-    fetchStats();
-
-    // Opsional: Realtime subscription bisa ditambahkan di sini
-  }, []);
-
-  async function fetchStats() {
-    // Tidak perlu loading spinner full, cukup update diam-diam atau skeleton awal
-
+  const fetchStats = useCallback(async () => {
     const { count: totalChat } = await supabase
       .from("Chat")
       .select("*", { count: "exact", head: true });
@@ -54,7 +45,15 @@ export function StatsOverview() {
       registeredUsers: registeredUsers || 0,
     });
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchStats();
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [fetchStats]);
 
   if (loading) {
     return (

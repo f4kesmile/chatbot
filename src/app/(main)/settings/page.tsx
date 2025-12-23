@@ -2,28 +2,37 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { User, Lock, Bell, Palette, Save } from "lucide-react";
+import { User, Lock, Palette, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { createClient } from "@/utils/supabase/client";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 export default function SettingsPage() {
-  const [user, setUser] = React.useState<any>(null);
-  const supabase = createClient();
+  const [user, setUser] = React.useState<SupabaseUser | null>(null);
+  const [supabase] = React.useState(() => createClient());
 
   React.useEffect(() => {
+    let mounted = true;
+
     async function getUser() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      setUser(user);
+
+      if (mounted) setUser(user);
     }
-    getUser();
-  }, []);
+
+    void getUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
 
   const initial = user?.email?.charAt(0).toUpperCase() || "U";
 
@@ -102,7 +111,10 @@ export default function SettingsPage() {
                   <Input
                     id="name"
                     placeholder="Nama Anda"
-                    defaultValue={user?.user_metadata?.full_name}
+                    defaultValue={
+                      (user?.user_metadata as { full_name?: string } | null)
+                        ?.full_name
+                    }
                     className="bg-zinc-50 dark:bg-zinc-950/50 border-zinc-200 dark:border-zinc-800 focus-visible:ring-primary"
                   />
                 </div>
@@ -132,7 +144,7 @@ export default function SettingsPage() {
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
-                    value={user?.email}
+                    value={user?.email ?? ""}
                     disabled
                     className="bg-zinc-100 dark:bg-zinc-800 border-transparent opacity-70"
                   />

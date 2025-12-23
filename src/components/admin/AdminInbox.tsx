@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { toast } from "sonner"; // <--- IMPORT SONNER
+import { toast } from "sonner";
 
 interface Ticket {
   id: string;
@@ -31,17 +31,18 @@ interface Ticket {
   };
 }
 
+type TicketRow = Omit<Ticket, "user"> & {
+  user?: Ticket["user"] | null;
+};
+
 export function AdminInbox() {
+  const [supabase] = useState(() => createClient());
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
-  useEffect(() => {
-    fetchTickets();
-  }, []);
-
-  async function fetchTickets() {
+  const fetchTickets = useCallback(async () => {
     setLoading(true);
+
     const { data, error } = await supabase
       .from("Ticket")
       .select(
@@ -53,41 +54,54 @@ export function AdminInbox() {
       .order("createdAt", { ascending: false });
 
     if (!error && data) {
-      const formattedData = data.map((t: any) => ({
-        ...t,
-        user: t.user || { email: "Unknown" },
+      const rows = data as unknown as TicketRow[];
+
+      const formattedData: Ticket[] = rows.map((t) => ({
+        ...(t as Omit<Ticket, "user">),
+        user: t.user ?? { email: "Unknown" },
       }));
+
       setTickets(formattedData);
     }
+
     setLoading(false);
-  }
+  }, [supabase]);
 
-  async function updateStatus(id: string, newStatus: string) {
-    // Simpan data lama untuk revert jika gagal
-    const previousTickets = [...tickets];
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchTickets();
+    }, 0);
 
-    // Optimistic Update
-    setTickets((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: newStatus as any } : t))
-    );
+    return () => clearTimeout(t);
+  }, [fetchTickets]);
 
-    // Toast Info
-    toast.info("Mengupdate status...", { duration: 1000 });
+  const updateStatus = useCallback(
+    async (id: string, newStatus: Ticket["status"]) => {
+      const previousTickets = [...tickets];
 
-    const { error } = await supabase
-      .from("Ticket")
-      .update({ status: newStatus })
-      .eq("id", id);
+      // Optimistic Update
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
+      );
 
-    if (error) {
-      toast.error("Gagal mengubah status!");
-      setTickets(previousTickets); // Kembalikan ke state awal
-    } else {
-      toast.success(`Tiket ditandai ${newStatus}`);
-    }
-  }
+      toast.info("Mengupdate status...", { duration: 1000 });
 
-  const getStatusBadge = (status: string) => {
+      const { error } = await supabase
+        .from("Ticket")
+        .update({ status: newStatus })
+        .eq("id", id);
+
+      if (error) {
+        toast.error("Gagal mengubah status!");
+        setTickets(previousTickets); // Revert
+      } else {
+        toast.success(`Tiket ditandai ${newStatus}`);
+      }
+    },
+    [supabase, tickets]
+  );
+
+  const getStatusBadge = (status: Ticket["status"]) => {
     switch (status) {
       case "BARU":
         return (
@@ -139,7 +153,7 @@ export function AdminInbox() {
           size="sm"
           className="h-8 gap-2 text-muted-foreground hover:text-primary"
           onClick={() => {
-            fetchTickets();
+            void fetchTickets();
             toast.success("Data di-refresh");
           }}
         >
@@ -205,17 +219,17 @@ export function AdminInbox() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
-                    onClick={() => updateStatus(ticket.id, "BARU")}
+                    onClick={() => void updateStatus(ticket.id, "BARU")}
                   >
                     Tandai Baru
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => updateStatus(ticket.id, "DIPROSES")}
+                    onClick={() => void updateStatus(ticket.id, "DIPROSES")}
                   >
                     Tandai Sedang Proses
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => updateStatus(ticket.id, "SELESAI")}
+                    onClick={() => void updateStatus(ticket.id, "SELESAI")}
                   >
                     Tandai Selesai
                   </DropdownMenuItem>

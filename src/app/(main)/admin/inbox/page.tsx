@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
   Filter,
@@ -45,90 +45,120 @@ interface Ticket {
   };
 }
 
+type TicketRow = Omit<Ticket, "user"> & {
+  user?: Ticket["user"] | null;
+};
+
+type StatusFilter = "ALL" | Ticket["status"];
+
 export default function AdminInboxPage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+
+  const isFirstLoadRef = useRef(true);
+
+  const fetchTickets = useCallback(
+    async (opts?: { toastOnSuccess?: boolean }) => {
+      const toastOnSuccess = Boolean(opts?.toastOnSuccess);
+
+      if (isFirstLoadRef.current) setLoading(true);
+      else setIsRefreshing(true);
+
+      const { data, error } = await supabase
+        .from("Ticket")
+        .select(
+          `
+          *,
+          user:User(email, name)
+        `
+        )
+        .order("createdAt", { ascending: false });
+
+      if (!error && data) {
+        const rows = data as unknown as TicketRow[];
+
+        const formattedData: Ticket[] = rows.map((t) => ({
+          ...(t as Omit<Ticket, "user">),
+          user: t.user ?? { email: "Unknown User", name: "Guest" },
+        }));
+
+        setTickets(formattedData);
+
+        if (!isFirstLoadRef.current && toastOnSuccess) {
+          toast.success("Data berhasil diperbarui");
+        }
+      }
+
+      setLoading(false);
+      setIsRefreshing(false);
+      isFirstLoadRef.current = false;
+    },
+    [supabase]
+  );
 
   useEffect(() => {
-    fetchTickets();
-  }, []);
+    const t = setTimeout(() => {
+      void fetchTickets();
+    }, 0);
 
-  async function fetchTickets() {
-    // Loading state hanya muncul jika data kosong (awal load)
-    // Jika refresh manual, pakai state isRefreshing agar UI tidak kaget
-    if (tickets.length === 0) setLoading(true);
-    else setIsRefreshing(true);
+    return () => clearTimeout(t);
+  }, [fetchTickets]);
 
-    const { data, error } = await supabase
-      .from("Ticket")
-      .select(
-        `
-        *,
-        user:User(email, name)
-      `
-      )
-      .order("createdAt", { ascending: false });
+  const updateStatus = useCallback(
+    async (id: string, newStatus: Ticket["status"]) => {
+      const originalTickets = [...tickets];
 
-    if (!error && data) {
-      const formattedData = data.map((t: any) => ({
-        ...t,
-        user: t.user || { email: "Unknown User", name: "Guest" },
-      }));
-      setTickets(formattedData);
-      if (isRefreshing) toast.success("Data berhasil diperbarui");
-    }
-    setLoading(false);
-    setIsRefreshing(false);
-  }
+      // Optimistic Update
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
+      );
 
-  async function updateStatus(id: string, newStatus: string) {
-    const originalTickets = [...tickets];
+      toast.info("Memperbarui status...", { duration: 1000 });
 
-    // Optimistic Update
-    setTickets((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: newStatus as any } : t))
-    );
+      const { error } = await supabase
+        .from("Ticket")
+        .update({ status: newStatus })
+        .eq("id", id);
 
-    toast.info("Memperbarui status...", { duration: 1000 });
+      if (error) {
+        toast.error("Gagal update status!");
+        setTickets(originalTickets); // Revert jika gagal
+      } else {
+        toast.success(`Status diubah menjadi ${newStatus}`);
+      }
+    },
+    [supabase, tickets]
+  );
 
-    const { error } = await supabase
-      .from("Ticket")
-      .update({ status: newStatus })
-      .eq("id", id);
+  const deleteTicket = useCallback(
+    async (id: string) => {
+      if (!confirm("Yakin hapus pesan ini selamanya?")) return;
 
-    if (error) {
-      toast.error("Gagal update status!");
-      setTickets(originalTickets); // Revert jika gagal
-    } else {
-      toast.success(`Status diubah menjadi ${newStatus}`);
-    }
-  }
+      const previousTickets = [...tickets];
+      setTickets((prev) => prev.filter((t) => t.id !== id));
 
-  async function deleteTicket(id: string) {
-    if (!confirm("Yakin hapus pesan ini selamanya?")) return;
+      const { error } = await supabase.from("Ticket").delete().eq("id", id);
 
-    const previousTickets = [...tickets];
-    setTickets((prev) => prev.filter((t) => t.id !== id));
-
-    const { error } = await supabase.from("Ticket").delete().eq("id", id);
-
-    if (error) {
-      toast.error("Gagal menghapus pesan.");
-      setTickets(previousTickets);
-    } else {
-      toast.success("Pesan berhasil dihapus.");
-    }
-  }
+      if (error) {
+        toast.error("Gagal menghapus pesan.");
+        setTickets(previousTickets);
+      } else {
+        toast.success("Pesan berhasil dihapus.");
+      }
+    },
+    [supabase, tickets]
+  );
 
   const filteredTickets = tickets.filter((ticket) => {
     const matchStatus =
       statusFilter === "ALL" || ticket.status === statusFilter;
+
     const searchLower = searchQuery.toLowerCase();
     const matchSearch =
       ticket.user.email.toLowerCase().includes(searchLower) ||
@@ -138,7 +168,7 @@ export default function AdminInboxPage() {
     return matchStatus && matchSearch;
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: Ticket["status"]) => {
     switch (status) {
       case "BARU":
         return (
@@ -195,7 +225,10 @@ export default function AdminInboxPage() {
           />
         </div>
         <div className="w-full md:w-[200px]">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select
+            value={statusFilter}
+            onValueChange={(val) => setStatusFilter(val as StatusFilter)}
+          >
             <SelectTrigger className="bg-transparent border-border">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Filter className="w-4 h-4" />
@@ -225,7 +258,7 @@ export default function AdminInboxPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchTickets}
+            onClick={() => void fetchTickets({ toastOnSuccess: true })}
             className="gap-2"
           >
             <RefreshCw
@@ -295,22 +328,22 @@ export default function AdminInboxPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        onClick={() => updateStatus(ticket.id, "BARU")}
+                        onClick={() => void updateStatus(ticket.id, "BARU")}
                       >
                         <AlertCircle className="w-4 h-4 mr-2" /> Tandai Baru
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => updateStatus(ticket.id, "DIPROSES")}
+                        onClick={() => void updateStatus(ticket.id, "DIPROSES")}
                       >
                         <Clock className="w-4 h-4 mr-2" /> Tandai Proses
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => updateStatus(ticket.id, "SELESAI")}
+                        onClick={() => void updateStatus(ticket.id, "SELESAI")}
                       >
                         <CheckCircle2 className="w-4 h-4 mr-2" /> Tandai Selesai
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => deleteTicket(ticket.id)}
+                        onClick={() => void deleteTicket(ticket.id)}
                         className="text-red-500 focus:text-red-500"
                       >
                         <Trash2 className="w-4 h-4 mr-2" /> Hapus Pesan

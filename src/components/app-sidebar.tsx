@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
 import {
   IconMessage,
@@ -30,19 +31,22 @@ export function AppSidebar() {
   const [open, setOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Data User
   const [userEmail, setUserEmail] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("user");
   const [userName, setUserName] = useState<string>("");
 
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const router = useRouter();
 
   useEffect(() => {
+    let mounted = true;
+
     async function fetchData() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
+      if (!mounted) return;
 
       if (user) {
         setUserEmail(user.email || "");
@@ -53,20 +57,24 @@ export function AppSidebar() {
           .eq("id", user.id)
           .single();
 
+        if (!mounted) return;
+
         if (userData) {
           setUserRole(userData.role || "user");
           setUserName(userData.name || "");
           if (userData.role === "admin") setIsAdmin(true);
         }
-
-        // HAPUS FETCH CHAT LAMA DARI SINI
       }
     }
-    fetchData();
-  }, []);
 
-  // FUNGSI LOGOUT DENGAN NOTIFIKASI
-  const handleLogout = async () => {
+    void fetchData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
+
+  const handleLogout = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -78,7 +86,7 @@ export function AppSidebar() {
       router.replace("/login");
       router.refresh();
     }
-  };
+  }, [router, supabase]);
 
   const mainLinks = [
     {
@@ -131,9 +139,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      {/* SIDEBAR BODY */}
       <SidebarBody className="justify-between gap-10 bg-zinc-50 dark:bg-zinc-950 border-r md:border-r-0 md:border md:rounded-3xl border-zinc-200 dark:border-zinc-800 shadow-xl">
-        {/* --- ATAS: LOGO & MENU --- */}
         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
           {open ? <Logo /> : <LogoIcon />}
 
@@ -177,17 +183,12 @@ export function AppSidebar() {
               Riwayat
             </p>
 
-            {/* 2. PASANG KOMPONEN RIWAYAT DI SINI */}
-            {/* Kita bungkus dengan logic agar rapi saat sidebar tertutup */}
             <div className={cn(!open ? "hidden" : "block")}>
               <ChatHistoryList />
             </div>
-
-            {/* Fallback Icon jika sidebar tertutup (Opsional, agar tidak kosong melompong) */}
           </div>
         </div>
 
-        {/* --- BAWAH: USER PROFILE (DROPDOWN) --- */}
         <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 -mx-2 px-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -198,14 +199,12 @@ export function AppSidebar() {
                   !open && "justify-center"
                 )}
               >
-                {/* AVATAR */}
                 <Avatar className="h-10 w-10 border border-zinc-300 dark:border-zinc-700 shrink-0">
                   <AvatarFallback className="bg-blue-600 text-white font-bold text-sm">
                     {initial}
                   </AvatarFallback>
                 </Avatar>
 
-                {/* INFO USER (Hanya muncul saat Open) */}
                 {open && (
                   <div className="flex flex-col items-start text-left overflow-hidden">
                     <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate w-40">
@@ -217,7 +216,6 @@ export function AppSidebar() {
               </button>
             </DropdownMenuTrigger>
 
-            {/* DROPDOWN CONTENT (Sign Out) */}
             <DropdownMenuContent
               side="top"
               align="start"
@@ -244,9 +242,8 @@ export function AppSidebar() {
   );
 }
 
-// LOGO COMPONENTS
 export const Logo = () => (
-  <a
+  <Link
     href="/"
     className="font-normal flex space-x-2 items-center text-sm text-black py-1 relative z-20 pl-1"
   >
@@ -258,14 +255,14 @@ export const Logo = () => (
     >
       Vibe Coder
     </motion.span>
-  </a>
+  </Link>
 );
 
 export const LogoIcon = () => (
-  <a
+  <Link
     href="/"
     className="font-normal flex space-x-2 items-center text-sm text-black py-1 relative z-20 pl-1"
   >
     <div className="h-6 w-6 bg-blue-600 rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm shrink-0" />
-  </a>
+  </Link>
 );

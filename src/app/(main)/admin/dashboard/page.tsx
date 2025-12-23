@@ -1,6 +1,6 @@
 import { StatsOverview } from "@/components/admin/StatsOverview";
 import { AdminInbox } from "@/components/admin/AdminInbox";
-import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
+// import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
 import { requireAdmin } from "@/utils/check-role";
 
 export default async function AdminDashboard() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -23,29 +23,49 @@ import {
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
+type BotTone = "FORMAL" | "CASUAL" | "HUMOR";
+
+type SiteConfigState = {
+  maintenanceMode: boolean;
+  botTone: BotTone;
+  handoffMessage: string;
+};
+
 export default function AdminSettingsPage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(false);
 
   // Hanya State Config yang tersisa (Bersih)
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<SiteConfigState>({
     maintenanceMode: false,
     botTone: "FORMAL",
     handoffMessage: "",
   });
 
-  useEffect(() => {
-    fetchConfig();
-  }, []);
-
-  async function fetchConfig() {
+  const fetchConfig = useCallback(async () => {
     const { data } = await supabase
       .from("SiteConfig")
       .select("*")
       .eq("id", "config")
       .single();
-    if (data) setConfig(data);
-  }
+
+    if (data) {
+      const cfg = data as unknown as Partial<SiteConfigState>;
+      setConfig({
+        maintenanceMode: Boolean(cfg.maintenanceMode),
+        botTone: (cfg.botTone as BotTone) ?? "FORMAL",
+        handoffMessage: (cfg.handoffMessage as string) ?? "",
+      });
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchConfig();
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [fetchConfig]);
 
   async function saveConfig() {
     setLoading(true);
@@ -123,7 +143,9 @@ export default function AdminSettingsPage() {
               </Label>
               <Select
                 value={config.botTone}
-                onValueChange={(val) => setConfig({ ...config, botTone: val })}
+                onValueChange={(val) =>
+                  setConfig({ ...config, botTone: val as BotTone })
+                }
               >
                 <SelectTrigger className="w-full h-12 bg-transparent border-border">
                   <SelectValue placeholder="Pilih tone..." />
@@ -154,7 +176,7 @@ export default function AdminSettingsPage() {
               </p>
             </div>
 
-            {/* 3. Handoff Message (Full Width di Mobile, Separuh di Desktop) */}
+            {/* 3. Handoff Message */}
             <div className="space-y-3 md:col-span-2">
               <Label className="text-base font-semibold">
                 Pesan Fallback (Tidak Tahu)

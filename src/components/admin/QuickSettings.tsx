@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -25,43 +25,70 @@ import {
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
+type BotTone = "FORMAL" | "CASUAL" | "HUMOR";
+
+type SiteConfigState = {
+  maintenanceMode: boolean;
+  botTone: BotTone;
+  handoffMessage: string;
+};
+
+type KnowledgeItem = {
+  id: string;
+  title: string;
+  content: string;
+  category?: string | null;
+  updatedAt?: string | null;
+};
+
 export default function QuickSettings() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(false);
 
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<SiteConfigState>({
     maintenanceMode: false,
     botTone: "FORMAL",
     handoffMessage: "",
   });
 
-  const [knowledgeList, setKnowledgeList] = useState<any[]>([]);
+  const [knowledgeList, setKnowledgeList] = useState<KnowledgeItem[]>([]);
   const [newInfoTitle, setNewInfoTitle] = useState("");
   const [newInfoContent, setNewInfoContent] = useState("");
 
-  useEffect(() => {
-    fetchConfig();
-    fetchKnowledge();
-  }, []);
-
-  async function fetchConfig() {
+  const fetchConfig = useCallback(async () => {
     const { data } = await supabase
       .from("SiteConfig")
       .select("*")
       .eq("id", "config")
       .single();
-    if (data) {
-      setConfig(data);
-    }
-  }
 
-  async function fetchKnowledge() {
+    if (data) {
+      const cfg = data as unknown as Partial<SiteConfigState>;
+      setConfig({
+        maintenanceMode: Boolean(cfg.maintenanceMode),
+        botTone: (cfg.botTone as BotTone) ?? "FORMAL",
+        handoffMessage: (cfg.handoffMessage as string) ?? "",
+      });
+    }
+  }, [supabase]);
+
+  const fetchKnowledge = useCallback(async () => {
     const { data } = await supabase
       .from("KnowledgeBase")
       .select("*")
       .order("updatedAt", { ascending: false });
-    if (data) setKnowledgeList(data);
-  }
+
+    if (data) setKnowledgeList(data as unknown as KnowledgeItem[]);
+  }, [supabase]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchConfig();
+      void fetchKnowledge();
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [fetchConfig, fetchKnowledge]);
 
   async function saveConfig() {
     setLoading(true);
@@ -77,6 +104,7 @@ export default function QuickSettings() {
 
   async function addKnowledge() {
     if (!newInfoTitle || !newInfoContent) return;
+
     const { error } = await supabase.from("KnowledgeBase").insert({
       title: newInfoTitle,
       content: newInfoContent,
@@ -86,13 +114,13 @@ export default function QuickSettings() {
     if (!error) {
       setNewInfoTitle("");
       setNewInfoContent("");
-      fetchKnowledge();
+      await fetchKnowledge();
     }
   }
 
   async function deleteKnowledge(id: string) {
     await supabase.from("KnowledgeBase").delete().eq("id", id);
-    fetchKnowledge();
+    await fetchKnowledge();
   }
 
   return (
@@ -144,7 +172,9 @@ export default function QuickSettings() {
               <Label>Gaya Bahasa Bot</Label>
               <Select
                 value={config.botTone}
-                onValueChange={(val) => setConfig({ ...config, botTone: val })}
+                onValueChange={(val) =>
+                  setConfig({ ...config, botTone: val as BotTone })
+                }
               >
                 <SelectTrigger className="w-full bg-zinc-50 dark:bg-zinc-950/50 h-10 border-zinc-200 dark:border-zinc-800">
                   <SelectValue placeholder="Pilih gaya bahasa" />

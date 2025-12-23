@@ -1,24 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";
 import { MessageSquare, Loader2, Trash2 } from "lucide-react";
-import { toast } from "sonner"; // Pakai Sonner
+import { toast } from "sonner";
 import { usePathname, useRouter } from "next/navigation";
 
+type ChatRow = {
+  id: string;
+  title: string | null;
+  createdAt: string;
+};
+
 export function ChatHistoryList() {
-  const supabase = createClient();
-  const [chats, setChats] = useState<any[]>([]);
+  const [supabase] = useState(() => createClient());
+  const [chats, setChats] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
-  async function fetchHistory() {
+  const fetchHistory = useCallback(async () => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -30,32 +32,38 @@ export function ChatHistoryList() {
       .eq("userId", user.id)
       .order("createdAt", { ascending: false });
 
-    if (data) setChats(data);
+    if (data) setChats(data as unknown as ChatRow[]);
     setLoading(false);
-  }
+  }, [supabase]);
 
-  // FUNGSI HAPUS DENGAN SONNER (Bukan Alert Default)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchHistory();
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [fetchHistory]);
+
   function confirmDelete(id: string, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
 
-    // Tampilkan Toast Konfirmasi
     toast("Hapus riwayat percakapan ini?", {
       description: "Data tidak bisa dikembalikan.",
       action: {
         label: "Hapus",
-        onClick: () => deleteChat(id), // Panggil fungsi hapus jika diklik
+        onClick: () => void deleteChat(id),
       },
       cancel: {
         label: "Batal",
         onClick: () => {},
       },
-      duration: 4000, // Muncul selama 4 detik
+      duration: 4000,
     });
   }
 
   async function deleteChat(id: string) {
-    // Optimistic UI update (Hapus dari layar dulu biar cepat)
+    // Optimistic UI update
     const previousChats = [...chats];
     setChats((prev) => prev.filter((c) => c.id !== id));
 
@@ -63,10 +71,9 @@ export function ChatHistoryList() {
 
     if (error) {
       toast.error("Gagal menghapus chat");
-      setChats(previousChats); // Balikin jika gagal
+      setChats(previousChats);
     } else {
       toast.success("Chat berhasil dihapus");
-      // Jika user sedang membuka chat yang dihapus, kembalikan ke home
       if (pathname === `/chat/${id}`) {
         router.push("/");
       }
@@ -111,7 +118,7 @@ export function ChatHistoryList() {
 
           {/* Tombol Hapus */}
           <button
-            onClick={(e) => confirmDelete(chat.id, e)} // Panggil confirmDelete
+            onClick={(e) => confirmDelete(chat.id, e)}
             className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity focus:opacity-100"
           >
             <Trash2 className="w-3 h-3" />

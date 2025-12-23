@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { LogOut, Loader2 } from "lucide-react";
-import { toast } from "sonner"; // <--- Import Sonner
+import { toast } from "sonner";
 
 import {
   DropdownMenu,
@@ -22,45 +22,48 @@ export function AuthButton() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
-    };
+    const t = setTimeout(() => {
+      void (async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-    getUser();
+        setUser(session?.user ?? null);
+        setLoading(false);
+      })();
+    }, 0);
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
-      if (_event === "SIGNED_OUT") {
+      setLoading(false);
+
+      if (event === "SIGNED_OUT") {
         setUser(null);
         router.refresh();
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      clearTimeout(t);
+      subscription.unsubscribe();
+    };
+  }, [router, supabase]);
 
   const handleLogout = async () => {
-    // 1. Logout dari Supabase dengan error handling
     const { error } = await supabase.auth.signOut();
 
     if (error) {
       toast.error("Gagal Logout", { description: error.message });
     } else {
-      // 2. Tampilkan Notifikasi Sukses (Hijau Pekat)
       toast.success("Berhasil Logout", {
         description: "Sampai jumpa lagi!",
       });
 
-      // 3. Reset state & Redirect
       setUser(null);
       router.replace("/login");
       router.refresh();
