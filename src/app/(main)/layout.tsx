@@ -16,7 +16,7 @@ export default function MainLayout({
 
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* 1. TOMBOL POJOK KANAN ATAS */}
-        <div className="absolute top-8 right-6 z-50 flex items-center gap-3">
+        <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
           <div className="flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl p-1.5 shadow-sm">
             <ThemeTogglerButton />
             <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
@@ -25,7 +25,7 @@ export default function MainLayout({
         </div>
 
         {/* 2. BROADCAST WIDGET (POSISI SAJA) */}
-        <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-[500px] px-4 pointer-events-none flex flex-col items-center">
+        <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[100] w-full max-w-[500px] px-4 pointer-events-none flex flex-col items-center">
           <BroadcastWidget />
         </div>
 
