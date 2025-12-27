@@ -1,9 +1,9 @@
 import { StatsOverview } from "@/components/admin/StatsOverview";
 import { AdminInbox } from "@/components/admin/AdminInbox";
-// import { ThemeTogglerButton } from "@/components/animate-ui/components/buttons/theme-toggler";
 import { requireAdmin } from "@/utils/check-role";
 
 export default async function AdminDashboard() {
+  // Pastikan user adalah admin sebelum merender halaman (Server Side Check)
   await requireAdmin();
 
   return (
@@ -15,20 +15,17 @@ export default async function AdminDashboard() {
             Dashboard Overview
           </h1>
           <p className="text-muted-foreground text-sm">
-            Monitoring aktivitas bot dan tiket masuk.
+            Monitoring aktivitas pengguna dan tiket bantuan secara real-time.
           </p>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards (Dinamis dari DB) */}
       <StatsOverview />
 
-      {/* Main Content: Hanya Inbox (Sekarang Full Width) */}
-      <div className="grid grid-cols-1 h-[600px]">
-        {/* Inbox sekarang mengambil lebar penuh agar lebih lega */}
-        <div className="h-full rounded-xl overflow-hidden border bg-card text-card-foreground shadow-sm">
-          <AdminInbox />
-        </div>
+      {/* Main Content: Inbox Full Width */}
+      <div className="flex-1 min-h-[500px] rounded-xl overflow-hidden border bg-card text-card-foreground shadow-sm">
+        <AdminInbox />
       </div>
     </div>
   );

@@ -10,79 +10,184 @@ import {
   IconSettings,
   IconBook,
 } from "@tabler/icons-react";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings2 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChatHistoryList } from "@/components/chat/ChatHistoryList";
-
-// Dropdown & Avatar
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { eventBus } from "@/utils/events";
+import { PinList, PinListItem } from "@/components/ui/pin-list";
 
 export function AppSidebar() {
   const [open, setOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // User State
   const [userEmail, setUserEmail] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("user");
   const [userName, setUserName] = useState<string>("");
+  const [userAvatar, setUserAvatar] = useState<string>("");
+
+  // History State
+  const [history, setHistory] = useState<PinListItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const [supabase] = useState(() => createClient());
   const router = useRouter();
 
-  useEffect(() => {
-    let mounted = true;
+  // --- 1. FETCH USER DATA ---
+  const fetchUserData = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    async function fetchData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    if (user) {
+      setUserEmail(user.email || "");
+      setUserAvatar(user.user_metadata?.avatar_url || "");
 
-      if (!mounted) return;
+      // Pastikan tabel "User" sesuai dengan Prisma (Case Sensitive di Supabase)
+      const { data: userData } = await supabase
+        .from("User")
+        .select("role, name")
+        .eq("id", user.id)
+        .single();
 
-      if (user) {
-        setUserEmail(user.email || "");
-
-        const { data: userData } = await supabase
-          .from("User")
-          .select("role, name")
-          .eq("id", user.id)
-          .single();
-
-        if (!mounted) return;
-
-        if (userData) {
-          setUserRole(userData.role || "user");
-          setUserName(userData.name || "");
-          if (userData.role === "admin") setIsAdmin(true);
-        }
+      if (userData) {
+        setUserRole(userData.role || "user");
+        setUserName(userData.name || "");
+        const hasAdminAccess =
+          userData.role === "admin" || userData.role === "super_admin";
+        setIsAdmin(hasAdminAccess);
       }
     }
-
-    void fetchData();
-
-    return () => {
-      mounted = false;
-    };
   }, [supabase]);
+
+  // --- 2. FETCH CHAT HISTORY (DINAMIS DARI PRISMA SCHEMA) ---
+  const fetchHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    // NOTE: Nama tabel sesuaikan dengan Prisma ("Chat").
+    // Nama kolom sesuaikan dengan schema ("isPinned", "updatedAt").
+    // Supabase biasanya butuh quote "" untuk kolom camelCase jika dibuat via Prisma.
+    const { data, error } = await supabase
+      .from("Chat")
+      .select("id, title, updatedAt, isPinned")
+      .eq("userId", user.id) // Sesuaikan field userId di schema
+      .order("isPinned", { ascending: false })
+      .order("updatedAt", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("Error fetching chat:", error);
+    }
+
+    if (data) {
+      const mappedData: PinListItem[] = data.map((item: any) => ({
+        id: item.id,
+        title: item.title || "Percakapan Baru",
+        // Format tanggal dari 'updatedAt'
+        info: new Date(item.updatedAt).toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "short",
+        }),
+        pinned: item.isPinned || false,
+      }));
+      setHistory(mappedData);
+    }
+    setLoadingHistory(false);
+  }, [supabase]);
+
+  // --- 3. EVENT HANDLERS ---
+
+  // Handle Pin/Unpin
+  const handlePinToggle = async (id: string) => {
+    const item = history.find((h) => h.id === id);
+    if (!item) return;
+
+    const newStatus = !item.pinned;
+
+    // Optimistic Update
+    setHistory((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, pinned: newStatus } : p))
+    );
+
+    // Update Database
+    const { error } = await supabase
+      .from("Chat")
+      .update({ isPinned: newStatus }) // Column Prisma: isPinned
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Gagal update pin");
+      console.error(error);
+      // Revert jika gagal
+      setHistory((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, pinned: !newStatus } : p))
+      );
+    }
+  };
+
+  // Handle Delete
+  const handleDelete = async (id: string) => {
+    const isConfirmed = window.confirm("Hapus percakapan ini secara permanen?");
+    if (!isConfirmed) return;
+
+    const previousHistory = [...history];
+    setHistory((prev) => prev.filter((item) => item.id !== id));
+
+    const { error } = await supabase.from("Chat").delete().eq("id", id);
+
+    if (error) {
+      toast.error("Gagal menghapus chat");
+      setHistory(previousHistory);
+    } else {
+      toast.success("Chat dihapus");
+      router.push("/");
+    }
+  };
+
+  // Handle Select
+  const handleSelect = (id: string) => {
+    // Arahkan ke halaman chat dynamic [id]
+    // Pastikan folder Anda src/app/chat/[id]/page.tsx atau src/app/c/[id]/page.tsx
+    router.push(`/chat/${id}`);
+  };
+
+  // --- 4. USE EFFECTS ---
+  useEffect(() => {
+    fetchUserData();
+    fetchHistory();
+
+    const handleUserUpdate = () => {
+      fetchUserData();
+      fetchHistory();
+    };
+
+    eventBus.on("userUpdated", handleUserUpdate);
+    return () => {
+      eventBus.off("userUpdated", handleUserUpdate);
+    };
+  }, [fetchUserData, fetchHistory]);
 
   const handleLogout = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
-
     if (error) {
       toast.error("Gagal Logout", { description: error.message });
     } else {
-      toast.success("Berhasil Logout", {
-        description: "Sampai jumpa lagi!",
-      });
+      toast.success("Berhasil Logout");
       router.replace("/login");
       router.refresh();
     }
@@ -129,6 +234,11 @@ export function AppSidebar() {
       icon: <IconBook className="text-blue-500 h-6 w-6 shrink-0" />,
     },
     {
+      label: "User Management",
+      href: "/admin/users",
+      icon: <Settings2 className="text-blue-500 h-6 w-6 shrink-0" />,
+    },
+    {
       label: "Settings",
       href: "/admin/settings",
       icon: <IconSettings className="text-blue-500 h-6 w-6 shrink-0" />,
@@ -140,7 +250,7 @@ export function AppSidebar() {
   return (
     <Sidebar open={open} setOpen={setOpen}>
       <SidebarBody className="justify-between gap-10 bg-zinc-50 dark:bg-zinc-950 border-r md:border-r-0 md:border md:rounded-3xl border-zinc-200 dark:border-zinc-800 shadow-xl">
-        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden no-scrollbar">
           {open ? <Logo /> : <LogoIcon />}
 
           <div className="mt-8 flex flex-col gap-2">
@@ -173,23 +283,30 @@ export function AppSidebar() {
             </div>
           )}
 
-          <div className="mt-6 flex flex-col gap-2">
-            <p
-              className={cn(
-                "text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1 px-1",
-                !open && "hidden"
-              )}
-            >
-              Riwayat
-            </p>
+          {/* AREA RIWAYAT CHAT (DINAMIS PIN LIST) */}
+          <div className="mt-6 flex flex-col gap-2 flex-1">
+            {open && history.length > 0 && <div className="px-1" />}
 
-            <div className={cn(!open ? "hidden" : "block")}>
-              <ChatHistoryList />
+            <div className={cn("flex-1", !open && "hidden")}>
+              {loadingHistory ? (
+                <div className="text-xs text-zinc-400 px-4 animate-pulse">
+                  Memuat...
+                </div>
+              ) : (
+                <PinList
+                  items={history}
+                  onPinToggle={handlePinToggle}
+                  onDelete={handleDelete}
+                  onSelect={handleSelect}
+                  className="pb-10"
+                />
+              )}
             </div>
           </div>
         </div>
 
-        <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 -mx-2 px-2">
+        {/* PROFILE DROPDOWN */}
+        <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 -mx-2 px-2 mt-auto">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -200,6 +317,7 @@ export function AppSidebar() {
                 )}
               >
                 <Avatar className="h-10 w-10 border border-zinc-300 dark:border-zinc-700 shrink-0">
+                  <AvatarImage src={userAvatar} className="object-cover" />
                   <AvatarFallback className="bg-blue-600 text-white font-bold text-sm">
                     {initial}
                   </AvatarFallback>
@@ -210,7 +328,9 @@ export function AppSidebar() {
                     <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate w-40">
                       {userEmail}
                     </span>
-                    <span className="text-[12px] font-bold">{userRole}</span>
+                    <span className="text-[12px] font-bold text-zinc-500">
+                      {userRole}
+                    </span>
                   </div>
                 )}
               </button>
@@ -253,7 +373,7 @@ export const Logo = () => (
       animate={{ opacity: 1 }}
       className="font-bold text-lg text-black dark:text-white whitespace-pre"
     >
-      Vibe Coder
+      Takon AI
     </motion.span>
   </Link>
 );

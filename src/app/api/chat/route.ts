@@ -3,120 +3,95 @@ import { prisma } from "@/lib/prisma";
 
 export const maxDuration = 60;
 
-type IncomingMessage = {
-  role: string;
-  content?: string | null;
-};
-
-type BodyPayload = {
-  messages: IncomingMessage[];
-  chatId?: string | null;
-};
+const DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+const VISION_MODEL = "google/gemini-2.0-flash-exp:free";
 
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
 
-    // 1. Cek User Auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return new Response("Unauthorized", { status: 401 });
+    // 1. FETCH SITE CONFIG (MAINTENANCE, BROADCAST, DLL)
+    const { data: config } = await supabase.from("SiteConfig").select("*").eq("id", "config").maybeSingle();
+
+    if (config?.maintenanceMode) {
+      return new Response(JSON.stringify({ 
+        reply: "⚠️ SISTEM MAINTENANCE: Maaf, saat ini sistem sedang dalam pemeliharaan berkala. Silakan coba lagi nanti." 
+      }), { status: 200 });
     }
 
-    const body = (await req.json()) as BodyPayload;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return new Response("Unauthorized", { status: 401 });
 
-    if (!Array.isArray(body.messages) || body.messages.length === 0) {
-      return new Response("Invalid payload", { status: 400 });
+    const { messages, chatId, model, image } = await req.json();
+    const userContent = messages[messages.length - 1]?.content ?? "";
+
+    // 2. LOGIKA AUTO-SUMMARY (Hanya jika Chat Baru / Pembuatan Tiket)
+    let aiSummaryText = null;
+    if (!chatId && userContent.length > 10) {
+      try {
+        const summaryRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.0-flash-exp:free",
+            messages: [
+              { role: "system", content: "Ringkas pesan user berikut dalam 5-8 kata saja. Tanpa awalan, langsung inti masalah." },
+              { role: "user", content: userContent }
+            ]
+          })
+        });
+        const summaryData = await summaryRes.json();
+        aiSummaryText = summaryData.choices?.[0]?.message?.content;
+      } catch (e) { console.error("Summary Failed", e); }
     }
 
-    const { messages, chatId } = body;
-
-    // Ambil pesan terakhir dari user
-    const lastUserMessage = messages[messages.length - 1];
-    const userContent = lastUserMessage?.content ?? "";
-
-    let currentChatId = chatId ?? null;
-
-    // 2. Jika Chat ID belum ada (Chat Baru), Buat di DB
+    // 3. DATABASE: CREATE TICKET (Jika Chat Baru)
+    let currentChatId = chatId;
     if (!currentChatId) {
-      const autoTitle =
-        userContent.length > 40 ? userContent.substring(0, 40) + "..." : userContent;
-
       const newChat = await prisma.chat.create({
-        data: {
-          userId: user.id,
-          title: autoTitle,
-        },
+        data: { userId: user.id, title: aiSummaryText || userContent.substring(0, 30) }
       });
       currentChatId = newChat.id;
+
+      // Masukkan ke SupportTicket dengan Ringkasan AI
+      await supabase.from("SupportTicket").insert({
+        email: user.email,
+        subject: aiSummaryText || "Tiket Baru",
+        message: userContent,
+        status: "OPEN"
+      });
     }
 
-    // 3. Simpan Pesan USER ke DB
-    await prisma.message.create({
-      data: {
-        chatId: currentChatId,
-        role: "USER",
-        content: userContent,
-      },
-    });
+    // 4. PREPARE AI PAYLOAD (KNOWLEDGE BASE & TONE)
+    const { data: kbData } = await supabase.from("KnowledgeBase").select("*");
+    const personality = kbData?.find(d => d.category === "SYSTEM_PROMPT")?.content || "Kamu adalah asisten AI.";
+    const contextStr = kbData?.filter(d => d.category === "INFO").map(k => `- [${k.title}]: ${k.content}`).join("\n");
+    
+    const tone = config?.botTone || "FORMAL";
+    const toneInstruction = tone === "HUMOR" ? "Ceria dan humoris." : tone === "CASUAL" ? "Santai." : "Formal.";
 
-    // 4. Request ke AI (OpenRouter)
-    const cleanMessages = messages.map((m) => ({
-      role: m.role,
-      content: m.content ?? "",
-    }));
+    const systemPrompt = `PERAN: ${personality}\nGAYA: ${toneInstruction}\nKONTEKS:\n${contextStr}\nFALLBACK: ${config?.handoffMessage}`;
 
+    // 5. FETCH COMPLETION
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer":
-          process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
-        "X-Title": "Vibe Coder",
-      },
+      headers: { "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model:
-          process.env.OPENROUTER_MODEL ||
-          "meta-llama/llama-3-8b-instruct:free",
-        messages: cleanMessages,
-      }),
+        model: image ? VISION_MODEL : (model || DEFAULT_MODEL),
+        messages: [{ role: "system", content: systemPrompt }, ...messages]
+      })
     });
 
-    if (!response.ok) {
-      return new Response("Error dari AI Provider", { status: 500 });
-    }
+    const data = await response.json();
+    const botReply = data.choices?.[0]?.message?.content;
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
+    // 6. SAVE TO DB
+    await prisma.message.create({ data: { chatId: currentChatId, role: "USER", content: userContent } });
+    await prisma.message.create({ data: { chatId: currentChatId, role: "ASSISTANT", content: botReply } });
 
-    const botReply =
-      data.choices?.[0]?.message?.content || "Maaf, saya tidak bisa menjawab.";
+    return new Response(JSON.stringify({ reply: botReply, chatId: currentChatId }), { status: 200 });
 
-    // 5. Simpan Pesan ASSISTANT ke DB
-    await prisma.message.create({
-      data: {
-        chatId: currentChatId,
-        role: "ASSISTANT",
-        content: botReply,
-      },
-    });
-
-    // 6. Return Response ke Frontend
-    return new Response(
-      JSON.stringify({
-        reply: botReply,
-        chatId: currentChatId,
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
-      }
-    );
   } catch (error) {
-    console.error(error);
-    return new Response("Terjadi kesalahan sistem.", { status: 500 });
+    return new Response(JSON.stringify({ error: "Server Error" }), { status: 500 });
   }
 }

@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Search,
-  Filter,
   MoreVertical,
   CheckCircle2,
   Clock,
@@ -12,15 +11,20 @@ import {
   Mail,
   RefreshCw,
   Trash2,
+  Send,
+  Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+// Hapus import Input dari shadcn karena kita pakai native input untuk fleksibilitas layout
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
   Select,
@@ -29,324 +33,440 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
-interface Ticket {
+interface Reply {
   id: string;
-  category: string;
-  summary: string | null;
-  content: string;
-  status: "BARU" | "DIPROSES" | "SELESAI";
+  ticketId?: string;
+  sender: "ADMIN" | "USER";
+  senderName?: string;
+  senderAvatar?: string | null;
+  message: string;
   createdAt: string;
-  user: {
-    email: string;
-    name: string | null;
-  };
 }
 
-type TicketRow = Omit<Ticket, "user"> & {
-  user?: Ticket["user"] | null;
-};
+interface SupportTicket {
+  id: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: "OPEN" | "IN_PROGRESS" | "CLOSED";
+  createdAt: string;
+  updatedAt: string;
+  userId?: string | null;
+  replies?: Reply[];
+  isReadByAdmin: boolean;
+}
 
-type StatusFilter = "ALL" | Ticket["status"];
+type StatusFilter = "ALL" | SupportTicket["status"];
 
 export default function AdminInboxPage() {
   const [supabase] = useState(() => createClient());
-
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 
-  const isFirstLoadRef = useRef(true);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(
+    null
+  );
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [replyMessage, setReplyMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
+  // --- FETCH ---
   const fetchTickets = useCallback(
     async (opts?: { toastOnSuccess?: boolean }) => {
-      const toastOnSuccess = Boolean(opts?.toastOnSuccess);
+      setLoading(true);
 
-      if (isFirstLoadRef.current) setLoading(true);
-      else setIsRefreshing(true);
+      const { data: ticketsData, error: ticketError } = await supabase
+        .from("SupportTicket")
+        .select("*")
+        .order("updatedAt", { ascending: false });
 
-      const { data, error } = await supabase
-        .from("Ticket")
-        .select(
-          `
-          *,
-          user:User(email, name)
-        `
-        )
-        .order("createdAt", { ascending: false });
-
-      if (!error && data) {
-        const rows = data as unknown as TicketRow[];
-
-        const formattedData: Ticket[] = rows.map((t) => ({
-          ...(t as Omit<Ticket, "user">),
-          user: t.user ?? { email: "Unknown User", name: "Guest" },
-        }));
-
-        setTickets(formattedData);
-
-        if (!isFirstLoadRef.current && toastOnSuccess) {
-          toast.success("Data berhasil diperbarui");
-        }
+      if (ticketError) {
+        toast.error("Gagal memuat inbox");
+        setLoading(false);
+        return;
       }
+
+      if (!ticketsData || ticketsData.length === 0) {
+        setTickets([]);
+        setLoading(false);
+        return;
+      }
+
+      const ticketIds = ticketsData.map((t) => t.id);
+
+      const { data: repliesData } = await supabase
+        .from("TicketReply")
+        .select(
+          "id, ticketId, message, sender, senderName, senderAvatar, createdAt"
+        )
+        .in("ticketId", ticketIds)
+        .order("createdAt", { ascending: true });
+
+      const formatted = ticketsData.map((ticket: any) => {
+        const myReplies =
+          repliesData?.filter((r: any) => r.ticketId === ticket.id) || [];
+        return { ...ticket, replies: myReplies };
+      });
+
+      setTickets(formatted as SupportTicket[]);
+      if (opts?.toastOnSuccess) toast.success("Inbox diperbarui");
 
       setLoading(false);
       setIsRefreshing(false);
-      isFirstLoadRef.current = false;
     },
     [supabase]
   );
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      void fetchTickets();
-    }, 0);
-
-    return () => clearTimeout(t);
+    fetchTickets();
   }, [fetchTickets]);
 
-  const updateStatus = useCallback(
-    async (id: string, newStatus: Ticket["status"]) => {
-      const originalTickets = [...tickets];
+  // --- ACTIONS ---
+  const toggleReadStatus = async (ticket: SupportTicket, status: boolean) => {
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticket.id ? { ...t, isReadByAdmin: status } : t
+      )
+    );
+    await fetch(`/api/support/${ticket.id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ isReadByAdmin: status }),
+    });
+    toast.success(status ? "Ditandai sudah dibaca" : "Ditandai belum dibaca");
+  };
 
-      // Optimistic Update
-      setTickets((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
+  const updateStatus = async (
+    id: string,
+    newStatus: SupportTicket["status"]
+  ) => {
+    setTickets((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
+    );
+    if (selectedTicket?.id === id)
+      setSelectedTicket((prev) =>
+        prev ? { ...prev, status: newStatus } : null
       );
+    await fetch(`/api/support/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: newStatus }),
+    });
+    toast.success(`Status tiket diubah: ${newStatus}`);
+  };
 
-      toast.info("Memperbarui status...", { duration: 1000 });
+  const deleteTicket = async (id: string) => {
+    if (!confirm("Hapus tiket ini permanen?")) return;
+    setTickets((prev) => prev.filter((t) => t.id !== id));
+    if (selectedTicket?.id === id) setIsSheetOpen(false);
+    await supabase.from("SupportTicket").delete().eq("id", id);
+    toast.success("Tiket dihapus.");
+  };
 
-      const { error } = await supabase
-        .from("Ticket")
-        .update({ status: newStatus })
-        .eq("id", id);
+  const openChat = async (ticket: SupportTicket) => {
+    setSelectedTicket(ticket);
+    setIsSheetOpen(true);
 
-      if (error) {
-        toast.error("Gagal update status!");
-        setTickets(originalTickets); // Revert jika gagal
-      } else {
-        toast.success(`Status diubah menjadi ${newStatus}`);
+    if (!ticket.isReadByAdmin) toggleReadStatus(ticket, true);
+
+    const res = await fetch(`/api/support/${ticket.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      setSelectedTicket(data);
+    }
+  };
+
+  const sendReply = async () => {
+    if (!replyMessage.trim() || !selectedTicket) return;
+    setIsSending(true);
+    try {
+      const res = await fetch(`/api/support/${selectedTicket.id}`, {
+        method: "POST",
+        body: JSON.stringify({ message: replyMessage, senderRole: "ADMIN" }),
+      });
+
+      if (res.ok) {
+        const newReply = await res.json();
+        setSelectedTicket((prev) =>
+          prev
+            ? {
+                ...prev,
+                replies: [...(prev.replies || []), newReply],
+                status: "IN_PROGRESS",
+              }
+            : null
+        );
+        setReplyMessage("");
+        fetchTickets();
       }
-    },
-    [supabase, tickets]
-  );
+    } catch (e) {
+      toast.error("Gagal kirim.");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
-  const deleteTicket = useCallback(
-    async (id: string) => {
-      if (!confirm("Yakin hapus pesan ini selamanya?")) return;
+  const getLastMessagePreview = (ticket: SupportTicket) => {
+    if (ticket.replies && ticket.replies.length > 0) {
+      const last = ticket.replies[ticket.replies.length - 1];
+      const sender =
+        last.sender === "ADMIN" ? "Anda" : last.senderName || "User";
+      return `${sender}: ${last.message}`;
+    }
+    return ticket.message;
+  };
 
-      const previousTickets = [...tickets];
-      setTickets((prev) => prev.filter((t) => t.id !== id));
-
-      const { error } = await supabase.from("Ticket").delete().eq("id", id);
-
-      if (error) {
-        toast.error("Gagal menghapus pesan.");
-        setTickets(previousTickets);
-      } else {
-        toast.success("Pesan berhasil dihapus.");
-      }
-    },
-    [supabase, tickets]
-  );
-
-  const filteredTickets = tickets.filter((ticket) => {
-    const matchStatus =
-      statusFilter === "ALL" || ticket.status === statusFilter;
-
-    const searchLower = searchQuery.toLowerCase();
+  const filteredTickets = tickets.filter((t) => {
+    const matchStatus = statusFilter === "ALL" || t.status === statusFilter;
     const matchSearch =
-      ticket.user.email.toLowerCase().includes(searchLower) ||
-      (ticket.summary && ticket.summary.toLowerCase().includes(searchLower)) ||
-      ticket.content.toLowerCase().includes(searchLower);
-
+      t.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.subject.toLowerCase().includes(searchQuery.toLowerCase());
     return matchStatus && matchSearch;
   });
 
-  const getStatusBadge = (status: Ticket["status"]) => {
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const adjustTextareaHeight = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    e.target.style.height = "auto";
+    e.target.style.height = `${e.target.scrollHeight}px`;
+  };
+
+  const getStatusBadge = (status: SupportTicket["status"]) => {
     switch (status) {
-      case "BARU":
+      case "OPEN":
         return (
-          <Badge variant="destructive" className="gap-1">
+          <Badge variant="destructive" className="gap-1 rounded-full px-2">
             <AlertCircle className="w-3 h-3" /> Baru
           </Badge>
         );
-      case "DIPROSES":
+      case "IN_PROGRESS":
         return (
           <Badge
             variant="secondary"
-            className="gap-1 bg-yellow-500/10 text-yellow-600 border-yellow-500/20"
+            className="gap-1 bg-yellow-100 text-yellow-700 rounded-full px-2"
           >
-            <Clock className="w-3 h-3" /> Proses
+            <Clock className="w-3 h-3" /> Diproses
           </Badge>
         );
-      case "SELESAI":
+      case "CLOSED":
         return (
           <Badge
             variant="outline"
-            className="gap-1 text-green-600 border-green-600/30 bg-green-500/5"
+            className="gap-1 text-green-600 bg-green-50 border-green-200 rounded-full px-2"
           >
             <CheckCircle2 className="w-3 h-3" /> Selesai
           </Badge>
         );
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge className="rounded-full">{status}</Badge>;
     }
   };
 
   return (
     <div className="flex flex-col h-full p-6 space-y-6 overflow-y-auto bg-background">
-      {/* HEADER PAGE */}
-      {/* Theme Toggler ditaruh disini agar tidak tumpang tindih */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Inbox Pesan</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Inbox Support</h1>
           <p className="text-muted-foreground text-sm">
-            Daftar lengkap pertanyaan dan keluhan user.
+            Kelola tiket bantuan user.
           </p>
         </div>
-        <div className="flex items-center gap-3"></div>
       </div>
 
-      {/* FILTER BAR */}
-      <div className="flex flex-col md:flex-row gap-4 p-4 rounded-xl border bg-card text-card-foreground shadow-sm">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Cari email atau isi pesan..."
-            className="pl-9 bg-transparent border-border"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <div className="w-full md:w-[200px]">
+      {/* --- FILTER BAR (FINAL FIX: FLEXBOX NATIVE) --- */}
+      <div className="flex items-center w-full rounded-full border bg-card shadow-sm pl-4 pr-1 h-12 transition-all focus-within:ring-2 focus-within:ring-blue-500/20">
+        {/* 1. SEARCH ICON */}
+        <Search className="w-4 h-4 text-muted-foreground shrink-0 mr-3" />
+
+        {/* 2. SEARCH INPUT (NATIVE) 
+            - 'flex-1' memaksanya mengambil SEMUA sisa ruang.
+            - 'w-full' memastikan lebarnya 100% dari flex-1 tsb.
+            - 'bg-transparent' & 'outline-none' agar menyatu dengan container.
+        */}
+        <input
+          type="text"
+          placeholder="Cari tiket (email/subjek)..."
+          className="flex-1 w-full bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground/70 h-full py-2"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+
+        {/* Garis Pemisah */}
+        <div className="h-6 w-px bg-border mx-2 shrink-0" />
+
+        {/* 3. FILTER DROPDOWN */}
+        <div className="shrink-0">
           <Select
             value={statusFilter}
-            onValueChange={(val) => setStatusFilter(val as StatusFilter)}
+            onValueChange={(v: any) => setStatusFilter(v)}
           >
-            <SelectTrigger className="bg-transparent border-border">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Filter className="w-4 h-4" />
-                <SelectValue placeholder="Filter Status" />
-              </div>
+            <SelectTrigger className="w-[140px] h-10 border-none shadow-none bg-transparent hover:bg-muted/50 focus:ring-0 rounded-full px-3 text-sm font-medium justify-between">
+              <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Semua Status</SelectItem>
-              <SelectItem value="BARU">Baru</SelectItem>
-              <SelectItem value="DIPROSES">Sedang Proses</SelectItem>
-              <SelectItem value="SELESAI">Selesai</SelectItem>
+
+            {/* position="popper" untuk dropdown melayang di bawah */}
+            <SelectContent
+              position="popper"
+              align="end"
+              sideOffset={5}
+              className="rounded-xl min-w-[140px]"
+            >
+              <SelectItem value="ALL">Semua</SelectItem>
+              <SelectItem value="OPEN">Baru</SelectItem>
+              <SelectItem value="IN_PROGRESS">Diproses</SelectItem>
+              <SelectItem value="CLOSED">Selesai</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* LIST TICKET */}
-      <div className="flex-1 rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden flex flex-col">
-        {/* HEADER LIST & REFRESH BUTTON */}
-        {/* Disini kita sejajarkan teks 'Menampilkan' dengan tombol 'Refresh' */}
-        <div className="p-4 border-b border-border bg-muted/5 flex justify-between items-center h-14">
-          <span className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-            Menampilkan {filteredTickets.length} pesan
+      <div className="flex-1 rounded-3xl border bg-card shadow-sm overflow-hidden flex flex-col">
+        <div className="p-4 border-b bg-muted/5 flex justify-between items-center h-14">
+          <span className="text-sm font-semibold text-muted-foreground ml-2">
+            Total {filteredTickets.length} tiket
           </span>
-
-          {/* Tombol Refresh dipindah kesini agar sejajar */}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void fetchTickets({ toastOnSuccess: true })}
-            className="gap-2"
+            onClick={() => fetchTickets({ toastOnSuccess: true })}
+            className="gap-2 rounded-full h-8"
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-            {isRefreshing ? "Memuat..." : "Refresh"}
+            />{" "}
+            Refresh
           </Button>
         </div>
 
-        {/* ISI LIST */}
-        <div className="flex-1 overflow-y-auto divide-y divide-border">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-zinc-50/50 dark:bg-black/20">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Loader2 className="w-8 h-8 animate-spin mb-4 text-primary" />
-              <p>Mengambil data inbox...</p>
-            </div>
-          ) : filteredTickets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <div className="w-16 h-16 rounded-full bg-muted/20 flex items-center justify-center mb-4">
-                <Mail className="w-8 h-8 opacity-50" />
-              </div>
-              <p>Tidak ada pesan yang cocok.</p>
+            <div className="flex justify-center py-20">
+              <Loader2 className="animate-spin text-muted-foreground" />
             </div>
           ) : (
             filteredTickets.map((ticket) => (
               <div
                 key={ticket.id}
-                className="p-4 hover:bg-muted/5 transition-colors group flex flex-col md:flex-row gap-4 items-start md:items-center justify-between"
+                className={`
+                  flex flex-col md:flex-row gap-4 items-center justify-between 
+                  p-4 rounded-2xl border transition-all duration-200
+                  ${
+                    !ticket.isReadByAdmin
+                      ? "bg-white dark:bg-zinc-900 border-blue-300 dark:border-blue-900 shadow-md ring-1 ring-blue-100 dark:ring-blue-900/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-800 opacity-90 hover:opacity-100"
+                  }
+                `}
               >
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-sm text-primary">
-                      {ticket.user.email}
+                <div
+                  className="flex-1 min-w-0 cursor-pointer w-full"
+                  onClick={() => openChat(ticket)}
+                >
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    {!ticket.isReadByAdmin && (
+                      <div className="w-2 h-2 rounded-full bg-blue-600 shrink-0 animate-pulse" />
+                    )}
+                    <span
+                      className={`text-sm ${
+                        !ticket.isReadByAdmin
+                          ? "font-bold text-foreground"
+                          : "font-medium text-muted-foreground"
+                      }`}
+                    >
+                      {ticket.email}
                     </span>
                     {getStatusBadge(ticket.status)}
-                    <span className="text-xs text-muted-foreground hidden md:inline-block">
-                      • {new Date(ticket.createdAt).toLocaleDateString()}
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {formatDate(ticket.updatedAt)}
                     </span>
                   </div>
-
-                  <h4 className="font-medium text-sm text-foreground">
-                    {ticket.summary || "Tidak ada subjek"}
+                  <h4
+                    className={`text-sm truncate ${
+                      !ticket.isReadByAdmin
+                        ? "font-bold text-foreground"
+                        : "font-medium text-foreground/90"
+                    }`}
+                  >
+                    {ticket.subject}
                   </h4>
-                  <p className="text-xs text-muted-foreground line-clamp-2 md:line-clamp-1 max-w-2xl">
-                    {ticket.content}
+                  <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                    {getLastMessagePreview(ticket)}
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-5 px-1 border-dashed text-muted-foreground"
-                    >
-                      {ticket.category}
-                    </Badge>
-                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end md:self-center">
+                <div className="flex items-center gap-1">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        className="rounded-full h-8 w-8 hover:bg-muted"
                       >
-                        <MoreVertical className="w-4 h-4" />
+                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="rounded-xl">
+                      <DropdownMenuLabel>Aksi</DropdownMenuLabel>
                       <DropdownMenuItem
-                        onClick={() => void updateStatus(ticket.id, "BARU")}
+                        onClick={() =>
+                          toggleReadStatus(ticket, !ticket.isReadByAdmin)
+                        }
                       >
-                        <AlertCircle className="w-4 h-4 mr-2" /> Tandai Baru
+                        {ticket.isReadByAdmin ? (
+                          <>
+                            <Mail className="w-4 h-4 mr-2" /> Tandai Belum
+                            Dibaca
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4 mr-2" /> Tandai Sudah
+                            Dibaca
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => updateStatus(ticket.id, "OPEN")}
+                      >
+                        Set: Baru
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void updateStatus(ticket.id, "DIPROSES")}
+                        onClick={() => updateStatus(ticket.id, "IN_PROGRESS")}
                       >
-                        <Clock className="w-4 h-4 mr-2" /> Tandai Proses
+                        Set: Proses
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void updateStatus(ticket.id, "SELESAI")}
+                        onClick={() => updateStatus(ticket.id, "CLOSED")}
                       >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Tandai Selesai
+                        Set: Selesai
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={() => void deleteTicket(ticket.id)}
+                        onClick={() => deleteTicket(ticket.id)}
                         className="text-red-500 focus:text-red-500"
                       >
-                        <Trash2 className="w-4 h-4 mr-2" /> Hapus Pesan
+                        <Trash2 className="w-4 h-4 mr-2" /> Hapus
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -356,6 +476,158 @@ export default function AdminInboxPage() {
           )}
         </div>
       </div>
+
+      {/* --- SHEET CHAT --- */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="w-[400px] sm:w-[540px] flex flex-col h-full p-0 gap-0 border-l border-zinc-200 dark:border-zinc-800 sm:rounded-l-3xl shadow-2xl overflow-hidden">
+          <SheetHeader className="p-6 border-b bg-muted/5">
+            <div className="flex justify-between items-start mr-6">
+              <div>
+                <SheetTitle className="text-lg font-bold leading-tight mb-1">
+                  {selectedTicket?.subject}
+                </SheetTitle>
+                <SheetDescription className="line-clamp-1">
+                  {selectedTicket?.email}
+                </SheetDescription>
+              </div>
+              {selectedTicket && getStatusBadge(selectedTicket.status)}
+            </div>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1 p-6 bg-zinc-50/50 dark:bg-black/20">
+            <div className="flex flex-col gap-6">
+              {/* TIKET AWAL */}
+              <div className="flex gap-3">
+                <Avatar className="w-8 h-8 mt-1 border border-zinc-200 dark:border-zinc-800">
+                  <AvatarFallback className="bg-zinc-200 dark:bg-zinc-800 text-xs">
+                    US
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col items-start gap-1 max-w-[85%]">
+                  <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 p-4 rounded-3xl rounded-tl-none shadow-sm text-sm">
+                    <p className="text-xs font-bold text-primary mb-1 border-b border-zinc-100 dark:border-zinc-700 pb-1">
+                      Tiket Awal
+                    </p>
+                    {selectedTicket?.message}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground ml-1">
+                    {selectedTicket && formatDate(selectedTicket.createdAt)}
+                  </span>
+                </div>
+              </div>
+
+              {/* REPLIES LIST */}
+              {selectedTicket?.replies?.map((r) => (
+                <div
+                  key={r.id}
+                  className={`flex gap-3 ${
+                    r.sender === "ADMIN" ? "flex-row-reverse" : ""
+                  }`}
+                >
+                  <Avatar
+                    className={`w-8 h-8 mt-1 border border-zinc-200 dark:border-zinc-700 ${
+                      r.sender === "ADMIN" ? "order-1" : ""
+                    }`}
+                  >
+                    <AvatarImage
+                      src={r.senderAvatar || ""}
+                      className="object-cover"
+                    />
+                    <AvatarFallback
+                      className={
+                        r.sender === "ADMIN"
+                          ? "bg-blue-600 text-white text-xs"
+                          : "bg-zinc-200 dark:bg-zinc-800 text-xs"
+                      }
+                    >
+                      {r.sender === "ADMIN" ? "AD" : "US"}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  <div
+                    className={`flex flex-col gap-1 max-w-[85%] ${
+                      r.sender === "ADMIN" ? "items-end" : "items-start"
+                    }`}
+                  >
+                    <div
+                      className={`px-4 py-3 rounded-3xl text-sm shadow-sm ${
+                        r.sender === "ADMIN"
+                          ? "bg-blue-600 text-white rounded-tr-none"
+                          : "bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-tl-none"
+                      }`}
+                    >
+                      <p
+                        className={`text-[10px] font-bold mb-1 ${
+                          r.sender === "ADMIN"
+                            ? "text-blue-100"
+                            : "text-blue-600 dark:text-blue-400"
+                        }`}
+                      >
+                        {r.senderName ||
+                          (r.sender === "ADMIN" ? "Admin" : "User")}
+                      </p>
+                      {r.message}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground mx-1">
+                      {formatDate(r.createdAt)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          {/* INPUT CHAT AREA */}
+          <div className="p-4 bg-background border-t">
+            <div className="relative flex items-end gap-2 bg-muted/50 border border-input rounded-[26px] px-2 py-2 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all shadow-sm">
+              <Textarea
+                value={replyMessage}
+                onChange={(e) => {
+                  setReplyMessage(e.target.value);
+                  adjustTextareaHeight(e);
+                }}
+                placeholder={
+                  selectedTicket?.status === "CLOSED"
+                    ? "Tiket ditutup."
+                    : "Ketik balasan..."
+                }
+                className="flex-1 min-h-[24px] max-h-[150px] w-full border-none shadow-none focus-visible:ring-0 bg-transparent resize-none py-2.5 px-3 text-sm leading-relaxed"
+                rows={1}
+                disabled={selectedTicket?.status === "CLOSED" || isSending}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendReply();
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                onClick={sendReply}
+                disabled={
+                  !replyMessage.trim() ||
+                  isSending ||
+                  selectedTicket?.status === "CLOSED"
+                }
+                className={`
+                    mb-0.5 rounded-full h-9 w-9 shrink-0 transition-all
+                    ${
+                      !replyMessage.trim()
+                        ? "bg-zinc-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-600"
+                        : "bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                    }
+                  `}
+              >
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 translate-x-0.5 translate-y-0.5" />
+                )}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

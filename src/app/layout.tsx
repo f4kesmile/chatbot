@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vibe Coder AI",
-  description: "AI Chatbot",
+  title: "Takon AI",
+  description: "Ojo bingung, Takon AI wae",
 };
 
 export default function RootLayout({

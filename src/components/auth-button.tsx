@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -16,43 +16,67 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { eventBus } from "@/utils/events"; // <--- 1. Import Event Bus
 
 export function AuthButton() {
   const [user, setUser] = useState<User | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>(""); // <--- 2. State untuk Avatar
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const [supabase] = useState(() => createClient());
 
+  // 3. Pisahkan logic fetch user agar bisa dipanggil ulang
+  const fetchUserData = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const currentUser = session?.user ?? null;
+    setUser(currentUser);
+
+    if (currentUser) {
+      setAvatarUrl(currentUser.user_metadata?.avatar_url || "");
+    }
+
+    setLoading(false);
+  }, [supabase]);
+
   useEffect(() => {
-    const t = setTimeout(() => {
-      void (async () => {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+    // Fetch awal
+    fetchUserData();
 
-        setUser(session?.user ?? null);
-        setLoading(false);
-      })();
-    }, 0);
-
+    // 4. Subscribe ke Supabase Auth Change (Login/Logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        setAvatarUrl(currentUser.user_metadata?.avatar_url || "");
+      }
+
       setLoading(false);
 
       if (event === "SIGNED_OUT") {
         setUser(null);
+        setAvatarUrl("");
         router.refresh();
       }
     });
 
-    return () => {
-      clearTimeout(t);
-      subscription.unsubscribe();
+    // 5. Subscribe ke Event Bus Custom (Update Profil)
+    const handleUserUpdate = () => {
+      fetchUserData(); // Ambil data ulang saat profil diupdate di Settings
     };
-  }, [router, supabase]);
+    eventBus.on("userUpdated", handleUserUpdate);
+
+    return () => {
+      subscription.unsubscribe();
+      eventBus.off("userUpdated", handleUserUpdate); // Bersihkan listener
+    };
+  }, [router, supabase, fetchUserData]);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -65,6 +89,7 @@ export function AuthButton() {
       });
 
       setUser(null);
+      setAvatarUrl("");
       router.replace("/login");
       router.refresh();
     }
@@ -85,6 +110,7 @@ export function AuthButton() {
     );
   }
 
+  // Fallback inisial jika avatar belum load
   const initial =
     user.user_metadata?.full_name?.charAt(0) ||
     user.email?.charAt(0).toUpperCase() ||
@@ -95,6 +121,8 @@ export function AuthButton() {
       <DropdownMenuTrigger asChild>
         <button className="relative h-9 w-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white hover:bg-zinc-700 transition focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-zinc-950">
           <Avatar className="h-9 w-9">
+            {/* 6. Gunakan AvatarImage dengan state avatarUrl */}
+            <AvatarImage src={avatarUrl} className="object-cover" />
             <AvatarFallback className="bg-blue-600 text-white font-bold">
               {initial}
             </AvatarFallback>

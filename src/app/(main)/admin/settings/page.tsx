@@ -13,33 +13,35 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   Save,
   Loader2,
   Briefcase,
   Coffee,
   Smile,
+  ShieldAlert,
+  Megaphone,
+  Sparkles,
   Settings2,
+  BrainCircuit,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
-type BotTone = "FORMAL" | "CASUAL" | "HUMOR";
-
-type SiteConfigState = {
-  maintenanceMode: boolean;
-  botTone: BotTone;
-  handoffMessage: string;
-};
-
 export default function AdminSettingsPage() {
   const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(false);
-
-  // Hanya State Config yang tersisa (Bersih)
-  const [config, setConfig] = useState<SiteConfigState>({
+  const [config, setConfig] = useState({
     maintenanceMode: false,
     botTone: "FORMAL",
     handoffMessage: "",
+    broadcastMessage: "",
   });
 
   const fetchConfig = useCallback(async () => {
@@ -48,165 +50,202 @@ export default function AdminSettingsPage() {
       .select("*")
       .eq("id", "config")
       .single();
-
-    if (data) {
-      const cfg = data as unknown as Partial<SiteConfigState>;
-      setConfig({
-        maintenanceMode: Boolean(cfg.maintenanceMode),
-        botTone: (cfg.botTone as BotTone) ?? "FORMAL",
-        handoffMessage: (cfg.handoffMessage as string) ?? "",
-      });
-    }
+    if (data) setConfig(data as any);
   }, [supabase]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      void fetchConfig();
-    }, 0);
-
-    return () => clearTimeout(t);
+    fetchConfig();
   }, [fetchConfig]);
 
   async function saveConfig() {
     setLoading(true);
-    const toastId = toast.loading("Menyimpan konfigurasi...");
-
-    const { error } = await supabase.from("SiteConfig").upsert({
-      id: "config",
-      maintenanceMode: config.maintenanceMode,
-      botTone: config.botTone,
-      handoffMessage: config.handoffMessage,
-    });
-
+    const { error } = await supabase
+      .from("SiteConfig")
+      .upsert({ id: "config", ...config });
     setLoading(false);
-
     if (!error) {
-      toast.success("Konfigurasi berhasil disimpan!", { id: toastId });
+      toast.success("Konfigurasi sistem berhasil diperbarui", {
+        description:
+          "Perubahan akan segera diterapkan pada seluruh sesi pengguna.",
+      });
     } else {
-      toast.error("Gagal menyimpan konfigurasi.", { id: toastId });
+      toast.error("Gagal menyimpan konfigurasi");
     }
   }
 
   return (
-    <div className="flex flex-col h-full p-6 space-y-6 overflow-y-auto bg-background">
-      {/* HEADER PAGE */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">System Settings</h1>
-          <p className="text-muted-foreground text-sm">
-            Kontrol pusat perilaku dan kepribadian AI.
-          </p>
+    <div className="p-4 md:p-8 lg:p-10 max-w-6xl mx-auto space-y-8 min-h-screen">
+      {/* Header Section */}
+      <header className="flex flex-col gap-1">
+        <div className="flex items-center gap-3 text-blue-600">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Site Settings
+          </h1>
         </div>
-      </div>
+        <p className="text-sm md:text-base text-muted-foreground max-w-2xl">
+          Konfigurasi pusat operasional dan kecerdasan buatan untuk mengontrol
+          perilaku sistem secara global.
+        </p>
+      </header>
 
-      {/* CONTAINER CARD UTAMA */}
-      <div className="rounded-xl border bg-card text-card-foreground shadow-sm h-full flex flex-col">
-        {/* Header Kecil dalam Card */}
-        <div className="p-6 border-b border-border flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg text-primary">
-            <Settings2 className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-lg">Konfigurasi Bot</h2>
-            <p className="text-xs text-muted-foreground">
-              Sesuaikan bagaimana bot berinteraksi dengan user.
-            </p>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Main Content Area */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* AI Personality Card */}
+          <Card className="border-none ring-1 ring-border shadow-sm rounded-2xl overflow-hidden">
+            <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b py-4">
+              <div className="flex items-center gap-2">
+                <BrainCircuit size={18} className="text-blue-600" />
+                <CardTitle className="text-base font-semibold">
+                  AI Personality & Behavior
+                </CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Atur bagaimana asisten virtual berinteraksi dengan pengguna.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              <div className="space-y-3">
+                <Label htmlFor="bot-tone" className="text-sm font-medium">
+                  Gaya Komunikasi
+                </Label>
+                <Select
+                  value={config.botTone}
+                  onValueChange={(v) => setConfig({ ...config, botTone: v })}
+                >
+                  <SelectTrigger
+                    id="bot-tone"
+                    className="rounded-xl h-11 border-border focus:ring-blue-500"
+                  >
+                    <SelectValue placeholder="Pilih gaya bicara" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl shadow-xl">
+                    <SelectItem value="FORMAL" className="rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Briefcase size={14} className="text-blue-600" />{" "}
+                        <span>Profesional & Formal</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="CASUAL" className="rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Coffee size={14} className="text-orange-500" />{" "}
+                        <span>Ramah & Santai</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="HUMOR" className="rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Smile size={14} className="text-green-500" />{" "}
+                        <span>Humoris & Ceria</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-        {/* ISI FORM */}
-        <div className="flex-1 p-6 space-y-8 max-w-4xl">
-          {/* 1. Maintenance Mode */}
-          <div className="flex items-center justify-between p-5 rounded-xl border border-border bg-muted/5">
-            <div className="space-y-1">
-              <Label className="text-base font-semibold">
-                Maintenance Mode
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Jika aktif, bot akan berhenti menjawab dan mengirim pesan
-                perbaikan.
-              </p>
-            </div>
-            <Switch
-              checked={config.maintenanceMode}
-              onCheckedChange={(val) =>
-                setConfig({ ...config, maintenanceMode: val })
-              }
-            />
-          </div>
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="handoff" className="text-sm font-medium">
+                    Pesan Kegagalan (Handoff)
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Dikirim saat AI tidak mampu menjawab permintaan pengguna.
+                  </span>
+                </div>
+                <Textarea
+                  id="handoff"
+                  value={config.handoffMessage}
+                  onChange={(e) =>
+                    setConfig({ ...config, handoffMessage: e.target.value })
+                  }
+                  placeholder="Contoh: Mohon maaf, saya memerlukan bantuan admin untuk menjawab ini..."
+                  className="rounded-xl min-h-[100px] bg-muted/20 border-border focus-visible:ring-blue-500 p-4 resize-none"
+                />
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="grid gap-8 md:grid-cols-2">
-            {/* 2. Tone Selection */}
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">
-                Gaya Bicara AI (Tone)
-              </Label>
-              <Select
-                value={config.botTone}
-                onValueChange={(val) =>
-                  setConfig({ ...config, botTone: val as BotTone })
-                }
-              >
-                <SelectTrigger className="w-full h-12 bg-transparent border-border">
-                  <SelectValue placeholder="Pilih tone..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="FORMAL">
-                    <span className="flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-blue-500" /> Formal &
-                      Profesional
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="CASUAL">
-                    <span className="flex items-center gap-2">
-                      <Coffee className="w-4 h-4 text-orange-500" /> Santai &
-                      Gaul
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="HUMOR">
-                    <span className="flex items-center gap-2">
-                      <Smile className="w-4 h-4 text-green-500" /> Humoris &
-                      Ceria
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Menentukan seberapa santai bot merespons user.
-              </p>
-            </div>
-
-            {/* 3. Handoff Message */}
-            <div className="space-y-3 md:col-span-2">
-              <Label className="text-base font-semibold">
-                Pesan Fallback (Tidak Tahu)
-              </Label>
+          {/* Broadcast Card */}
+          <Card className="border-none ring-1 ring-border shadow-sm rounded-2xl">
+            <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b py-4">
+              <div className="flex items-center gap-2">
+                <Megaphone size={18} className="text-blue-600" />
+                <CardTitle className="text-base font-semibold">
+                  Broadcast Banner
+                </CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Pengumuman global yang akan muncul di dashboard seluruh
+                pengguna.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
               <Textarea
-                value={config.handoffMessage}
+                placeholder="Tulis pengumuman penting di sini..."
+                value={config.broadcastMessage}
                 onChange={(e) =>
-                  setConfig({ ...config, handoffMessage: e.target.value })
+                  setConfig({ ...config, broadcastMessage: e.target.value })
                 }
-                className="resize-none h-32 bg-transparent border-border"
-                placeholder="Contoh: Maaf, saya belum memiliki informasi mengenai hal tersebut. Silakan hubungi admin."
+                className="rounded-xl min-h-[80px] bg-background border-border focus-visible:ring-blue-500 p-4"
               />
-              <p className="text-xs text-muted-foreground">
-                Pesan ini akan muncul ketika bot tidak menemukan jawaban di
-                Knowledge Base.
-              </p>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
+        </div>
 
-          {/* Tombol Simpan */}
-          <div className="pt-6 border-t border-border mt-4">
+        {/* Sidebar Controls */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Maintenance Control */}
+          <Card
+            className={`rounded-2xl border-none ring-1 transition-all duration-300 ${
+              config.maintenanceMode
+                ? "ring-red-500 bg-red-50/50 dark:bg-red-950/20"
+                : "ring-border bg-background"
+            }`}
+          >
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div
+                  className={`p-2 rounded-lg ${
+                    config.maintenanceMode
+                      ? "bg-red-100 text-red-600"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <ShieldAlert size={20} />
+                </div>
+                <Switch
+                  checked={config.maintenanceMode}
+                  onCheckedChange={(v) =>
+                    setConfig({ ...config, maintenanceMode: v })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-semibold text-sm">Mode Pemeliharaan</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Jika aktif, seluruh akses ke fitur AI akan dibatasi sementara
+                  untuk pengguna publik.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Save Action */}
+          <div className="sticky top-6">
             <Button
               onClick={saveConfig}
               disabled={loading}
-              size="lg"
-              className="min-w-[150px]"
+              className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-95 gap-2"
             >
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <Save className="mr-2 h-4 w-4" /> Simpan Perubahan
+              {loading ? (
+                <Loader2 className="animate-spin" size={18} />
+              ) : (
+                <Save size={18} />
+              )}
+              Simpan Konfigurasi
             </Button>
+            <p className="text-[10px] text-center text-muted-foreground mt-3 italic">
+              Pastikan Anda telah meninjau semua perubahan sebelum menyimpan.
+            </p>
           </div>
         </div>
       </div>

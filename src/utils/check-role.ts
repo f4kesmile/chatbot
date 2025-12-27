@@ -1,24 +1,24 @@
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma"; 
 
 export async function requireAdmin() {
   const supabase = await createClient();
-  
   const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
-    return redirect("/login");
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("User")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  // Izinkan jika role adalah admin ATAU super_admin
+  const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+
+  if (!isAdmin) {
+    redirect("/");
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { role: true }, 
-  });
-
-  if (!dbUser || dbUser.role !== "admin") {
-    return redirect("/"); 
-  }
-
-  return user; 
+  return profile;
 }

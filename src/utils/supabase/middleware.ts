@@ -15,7 +15,6 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // request.cookies.set() tidak menerima options, jadi jangan destructure options di sini
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
 
           supabaseResponse = NextResponse.next({
@@ -30,17 +29,24 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Cek user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // --- PERBAIKAN UTAMA DISINI ---
+  // Kita bungkus getUser() dengan try-catch agar tidak crash saat token invalid.
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (error) {
+    // Jika error (misal: Invalid Refresh Token), kita biarkan user = null
+    // Ini akan memicu logika redirect di bawah secara aman.
+    console.warn("Supabase Auth Error (Middleware):", error);
+  }
 
-  // CONTOH PROTEKSI ROUTE (Mirip Clerk)
-  // Jika user belum login dan mencoba akses halaman selain /login, redirect ke /login
+  // Jika user belum login/token rusak, dan bukan di halaman login/auth, tendang ke login
   if (
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !request.nextUrl.pathname.startsWith("/auth") &&
+    !request.nextUrl.pathname.startsWith("/signup") // Tambahkan signup biar aman
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
