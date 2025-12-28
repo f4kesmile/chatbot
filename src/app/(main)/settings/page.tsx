@@ -62,21 +62,33 @@ export default function SettingsPage() {
   const [isCropDialogOpen, setIsCropDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- FETCH USER ---
+  // --- 1. FETCH USER (DARI DATABASE) ---
   useEffect(() => {
     let mounted = true;
-    async function getUser() {
+    async function getUserData() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (mounted && user) {
         setUser(user);
-        setFullName(user.user_metadata?.full_name || "");
+
+        // A. Ambil Data dari Database (Tabel User) -> Sumber Kebenaran Utama
+        const { data: dbUser } = await supabase
+          .from("User")
+          .select("name, avatar")
+          .eq("id", user.id)
+          .single();
+
+        // B. Set State (Prioritas: Database -> Metadata -> Kosong)
+        setFullName(dbUser?.name || user.user_metadata?.full_name || "");
+        setAvatarUrl(dbUser?.avatar || user.user_metadata?.avatar_url || "");
+
+        // Bio masih dari metadata karena di schema database 'User' tidak ada kolom bio
         setBio(user.user_metadata?.bio || "");
-        setAvatarUrl(user.user_metadata?.avatar_url || "");
       }
     }
-    getUser();
+    getUserData();
     return () => {
       mounted = false;
     };
@@ -84,7 +96,7 @@ export default function SettingsPage() {
 
   const initial = user?.email?.charAt(0).toUpperCase() || "U";
 
-  // --- 1. PILIH FILE & BUKA CROPPER ---
+  // --- 2. PILIH FILE & BUKA CROPPER ---
   const onSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -100,7 +112,7 @@ export default function SettingsPage() {
     }
   };
 
-  // --- 2. SIMPAN POSISI CROP ---
+  // --- 3. SIMPAN POSISI CROP ---
   const onCropComplete = useCallback(
     (croppedArea: any, croppedAreaPixels: any) => {
       setCroppedAreaPixels(croppedAreaPixels);
@@ -108,7 +120,7 @@ export default function SettingsPage() {
     []
   );
 
-  // --- 3. PROSES UPLOAD ---
+  // --- 4. PROSES UPLOAD FOTO ---
   const uploadCroppedImage = async () => {
     if (!imageSrc || !croppedAreaPixels || !user) return;
 
@@ -138,16 +150,15 @@ export default function SettingsPage() {
 
       const publicUrl = publicUrlData.publicUrl;
 
-      // D. Update Metadata User Auth (Supaya update instan di sesi ini)
-      const { error: updateError } = await supabase.auth.updateUser({
+      // D. Update Metadata Auth (Supaya sesi saat ini update)
+      await supabase.auth.updateUser({
         data: { avatar_url: publicUrl },
       });
-      if (updateError) throw updateError;
 
-      // E. Update Tabel User di Database
+      // E. Update Database (PERMANEN)
       const { error: dbError } = await supabase
         .from("User")
-        .update({ avatar: publicUrl })
+        .update({ avatar: publicUrl }) // Update kolom 'avatar'
         .eq("id", user.id);
 
       if (dbError) throw dbError;
@@ -155,6 +166,8 @@ export default function SettingsPage() {
       // F. Update State & Broadcast Event
       setAvatarUrl(publicUrl);
       toast.success("Foto profil berhasil diperbarui!");
+
+      // Kirim sinyal ke Sidebar agar refresh foto
       eventBus.emit("userUpdated");
 
       setIsCropDialogOpen(false);
@@ -168,18 +181,32 @@ export default function SettingsPage() {
     }
   };
 
+  // --- 5. UPDATE PROFIL (NAMA & BIO) ---
   const handleUpdateProfile = async () => {
     if (!user) return;
     setIsUpdatingProfile(true);
     try {
-      const { error } = await supabase.auth.updateUser({
+      // A. Update Metadata Auth (Untuk Sesi)
+      const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName, bio: bio },
       });
-      if (error) throw error;
+      if (authError) throw authError;
+
+      // B. Update Database (PERMANEN - PENTING AGAR SIDEBAR BERUBAH)
+      const { error: dbError } = await supabase
+        .from("User")
+        .update({ name: fullName }) // Update kolom 'name' di DB
+        .eq("id", user.id);
+
+      if (dbError) throw dbError;
+
       toast.success("Profil diperbarui!");
+
+      // Kirim sinyal ke Sidebar
       eventBus.emit("userUpdated");
     } catch (error: any) {
-      toast.error(error.message);
+      console.error(error);
+      toast.error("Gagal memperbarui profil.");
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -223,7 +250,6 @@ export default function SettingsPage() {
         className="flex-1"
       >
         <Tabs defaultValue="profile" className="w-full max-w-4xl">
-          {/* PERBAIKAN: Mengembalikan styling active state */}
           <TabsList className="grid w-full grid-cols-3 mb-8 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl h-auto">
             <TabsTrigger
               value="profile"
@@ -378,7 +404,7 @@ export default function SettingsPage() {
         </Tabs>
       </motion.div>
 
-      {/* --- DIALOG CROPPER (MODERN UI) --- */}
+      {/* --- DIALOG CROPPER --- */}
       <Dialog open={isCropDialogOpen} onOpenChange={setIsCropDialogOpen}>
         <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-none shadow-2xl bg-zinc-950 text-white rounded-3xl">
           <DialogHeader className="p-6 pb-2 bg-zinc-900/50 backdrop-blur-xl border-b border-white/10 z-10">
