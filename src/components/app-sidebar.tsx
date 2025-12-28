@@ -71,16 +71,20 @@ export function AppSidebar() {
 
       const { data: userData } = await supabase
         .from("User")
-        .select("role, name")
+        .select("role, name, avatar")
         .eq("id", user.id)
         .single();
 
       if (userData) {
         setUserRole(userData.role || "user");
         setUserName(userData.name || "");
+        setUserAvatar(userData.avatar || user.user_metadata?.avatar_url || "");
+
         const hasAdminAccess =
           userData.role === "admin" || userData.role === "super_admin";
         setIsAdmin(hasAdminAccess);
+      } else {
+        setUserAvatar(user.user_metadata?.avatar_url || "");
       }
     }
   }, [supabase]);

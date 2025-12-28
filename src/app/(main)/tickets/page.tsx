@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Import AvatarImage
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +33,7 @@ interface Reply {
   ticketId?: string;
   sender: "USER" | "ADMIN";
   senderName?: string;
-  senderAvatar?: string | null; // <--- Field Baru untuk Avatar
+  senderAvatar?: string | null;
   message: string;
   createdAt: string;
 }
@@ -492,7 +492,6 @@ export default function TicketDashboardPage() {
                           r.sender === "USER" ? "bg-blue-600 text-white" : ""
                         }`}
                       >
-                        {/* UPDATE DISINI: TAMPILKAN FOTO JIKA ADA */}
                         <AvatarImage
                           src={r.senderAvatar || ""}
                           className="object-cover"
