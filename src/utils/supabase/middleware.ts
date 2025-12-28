@@ -28,25 +28,19 @@ export async function updateSession(request: NextRequest) {
       },
     }
   );
-
-  // --- PERBAIKAN UTAMA DISINI ---
-  // Kita bungkus getUser() dengan try-catch agar tidak crash saat token invalid.
+  
   let user = null;
   try {
     const { data } = await supabase.auth.getUser();
     user = data.user;
   } catch (error) {
-    // Jika error (misal: Invalid Refresh Token), kita biarkan user = null
-    // Ini akan memicu logika redirect di bawah secara aman.
     console.warn("Supabase Auth Error (Middleware):", error);
   }
-
-  // Jika user belum login/token rusak, dan bukan di halaman login/auth, tendang ke login
   if (
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
-    !request.nextUrl.pathname.startsWith("/signup") // Tambahkan signup biar aman
+    !request.nextUrl.pathname.startsWith("/signup")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

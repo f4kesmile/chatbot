@@ -173,7 +173,7 @@ export function ChatInput({
                 ${
                   (!input.trim() && !base64Image) || isLoading
                     ? "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-600 cursor-not-allowed" // Abu-abu
-                    : "bg-blue-600 text-white hover:bg-blue-700 shadow-md" // Primary
+                    : "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
                 }
               `}
             >

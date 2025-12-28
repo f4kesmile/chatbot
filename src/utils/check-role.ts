@@ -13,7 +13,6 @@ export async function requireAdmin() {
     .eq("id", user.id)
     .single();
 
-  // Izinkan jika role adalah admin ATAU super_admin
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
   if (!isAdmin) {

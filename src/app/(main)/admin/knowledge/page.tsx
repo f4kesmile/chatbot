@@ -20,6 +20,18 @@ import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// --- IMPORT ALERT DIALOG ---
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 type KnowledgeItem = {
   id: string;
   title: string;
@@ -49,6 +61,10 @@ export default function KnowledgePage() {
   const [systemPromptId, setSystemPromptId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+
+  // --- STATE UNTUK DELETE DIALOG ---
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // --- EFFECT UNTUK MENANDAI MOUNTED ---
   useEffect(() => {
@@ -104,19 +120,28 @@ export default function KnowledgePage() {
     }
   }
 
-  async function deleteKnowledge(id: string) {
+  // --- REFACTOR: EKSEKUSI HAPUS SETELAH KONFIRMASI ---
+  async function executeDelete() {
+    if (!deleteId) return;
+
+    setIsDeleting(true);
     const prevList = [...knowledgeList];
-    setKnowledgeList((prev) => prev.filter((i) => i.id !== id));
+    setKnowledgeList((prev) => prev.filter((i) => i.id !== deleteId));
+
     const { error } = await supabase
       .from("KnowledgeBase")
       .delete()
-      .eq("id", id);
+      .eq("id", deleteId);
+
     if (error) {
       toast.error("Gagal menghapus data");
       setKnowledgeList(prevList);
     } else {
       toast.success("Data dihapus permanen");
     }
+
+    setIsDeleting(false);
+    setDeleteId(null);
   }
 
   async function saveSystemPrompt() {
@@ -289,7 +314,8 @@ export default function KnowledgePage() {
                           variant="ghost"
                           size="icon"
                           className="text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                          onClick={() => deleteKnowledge(item.id)}
+                          // --- TRIGGER DELETE DIALOG ---
+                          onClick={() => setDeleteId(item.id)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -415,6 +441,41 @@ export default function KnowledgePage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* --- ALERT DIALOG --- */}
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+      >
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Pengetahuan Ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini tidak bisa dibatalkan. Data akan dihapus permanen
+              dari basis pengetahuan AI.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting} className="rounded-xl">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                executeDelete();
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Ya, Hapus"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

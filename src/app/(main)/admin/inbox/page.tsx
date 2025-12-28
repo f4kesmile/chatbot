@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-// Hapus import Input dari shadcn karena kita pakai native input untuk fleksibilitas layout
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -44,6 +43,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
+
+// --- IMPORT ALERT DIALOG ---
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Reply {
   id: string;
@@ -85,6 +96,10 @@ export default function AdminInboxPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [replyMessage, setReplyMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+
+  // --- STATE UNTUK DELETE DIALOG ---
+  const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
 
   // --- FETCH ---
   const fetchTickets = useCallback(
@@ -169,12 +184,31 @@ export default function AdminInboxPage() {
     toast.success(`Status tiket diubah: ${newStatus}`);
   };
 
-  const deleteTicket = async (id: string) => {
-    if (!confirm("Hapus tiket ini permanen?")) return;
-    setTickets((prev) => prev.filter((t) => t.id !== id));
-    if (selectedTicket?.id === id) setIsSheetOpen(false);
-    await supabase.from("SupportTicket").delete().eq("id", id);
-    toast.success("Tiket dihapus.");
+  // --- REFACTOR: EKSEKUSI HAPUS SETELAH KONFIRMASI ---
+  const executeDeleteTicket = async () => {
+    if (!ticketToDelete) return;
+
+    setIsDeletingTicket(true);
+    // Optimistic Update
+    setTickets((prev) => prev.filter((t) => t.id !== ticketToDelete));
+
+    // Jika tiket yang dihapus sedang dibuka di Sheet, tutup sheetnya
+    if (selectedTicket?.id === ticketToDelete) setIsSheetOpen(false);
+
+    const { error } = await supabase
+      .from("SupportTicket")
+      .delete()
+      .eq("id", ticketToDelete);
+
+    if (error) {
+      toast.error("Gagal menghapus tiket dari database");
+      fetchTickets(); // Refresh jika gagal agar data kembali
+    } else {
+      toast.success("Tiket dihapus.");
+    }
+
+    setIsDeletingTicket(false);
+    setTicketToDelete(null);
   };
 
   const openChat = async (ticket: SupportTicket) => {
@@ -295,16 +329,9 @@ export default function AdminInboxPage() {
         </div>
       </div>
 
-      {/* --- FILTER BAR (FINAL FIX: FLEXBOX NATIVE) --- */}
+      {/* --- FILTER BAR --- */}
       <div className="flex items-center w-full rounded-full border bg-card shadow-sm pl-4 pr-1 h-12 transition-all focus-within:ring-2 focus-within:ring-blue-500/20">
-        {/* 1. SEARCH ICON */}
         <Search className="w-4 h-4 text-muted-foreground shrink-0 mr-3" />
-
-        {/* 2. SEARCH INPUT (NATIVE) 
-            - 'flex-1' memaksanya mengambil SEMUA sisa ruang.
-            - 'w-full' memastikan lebarnya 100% dari flex-1 tsb.
-            - 'bg-transparent' & 'outline-none' agar menyatu dengan container.
-        */}
         <input
           type="text"
           placeholder="Cari tiket (email/subjek)..."
@@ -312,11 +339,7 @@ export default function AdminInboxPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
-
-        {/* Garis Pemisah */}
         <div className="h-6 w-px bg-border mx-2 shrink-0" />
-
-        {/* 3. FILTER DROPDOWN */}
         <div className="shrink-0">
           <Select
             value={statusFilter}
@@ -325,8 +348,6 @@ export default function AdminInboxPage() {
             <SelectTrigger className="w-[140px] h-10 border-none shadow-none bg-transparent hover:bg-muted/50 focus:ring-0 rounded-full px-3 text-sm font-medium justify-between">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-
-            {/* position="popper" untuk dropdown melayang di bawah */}
             <SelectContent
               position="popper"
               align="end"
@@ -463,7 +484,8 @@ export default function AdminInboxPage() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={() => deleteTicket(ticket.id)}
+                        // --- TRIGGER DIALOG ---
+                        onClick={() => setTicketToDelete(ticket.id)}
                         className="text-red-500 focus:text-red-500"
                       >
                         <Trash2 className="w-4 h-4 mr-2" /> Hapus
@@ -477,7 +499,6 @@ export default function AdminInboxPage() {
         </div>
       </div>
 
-      {/* --- SHEET CHAT --- */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent className="w-[400px] sm:w-[540px] flex flex-col h-full p-0 gap-0 border-l border-zinc-200 dark:border-zinc-800 sm:rounded-l-3xl shadow-2xl overflow-hidden">
           <SheetHeader className="p-6 border-b bg-muted/5">
@@ -628,6 +649,44 @@ export default function AdminInboxPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* --- ALERT DIALOG --- */}
+      <AlertDialog
+        open={!!ticketToDelete}
+        onOpenChange={(open) => !open && setTicketToDelete(null)}
+      >
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Tiket Support?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini akan menghapus tiket dan seluruh riwayat
+              percakapannya secara permanen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isDeletingTicket}
+              className="rounded-xl"
+            >
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                executeDeleteTicket();
+              }}
+              disabled={isDeletingTicket}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
+            >
+              {isDeletingTicket ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Hapus Permanen"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

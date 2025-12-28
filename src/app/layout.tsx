@@ -17,6 +17,20 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Takon AI",
   description: "Ojo bingung, Takon AI wae",
+  icons: {
+    icon: [
+      {
+        media: "(prefers-color-scheme: light)",
+        url: "/favicon-light.png",
+        href: "/favicon-light.png",
+      },
+      {
+        media: "(prefers-color-scheme: dark)",
+        url: "/favicon-dark.png",
+        href: "/favicon-dark.png",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({
