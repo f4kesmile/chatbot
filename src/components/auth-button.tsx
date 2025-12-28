@@ -17,16 +17,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { eventBus } from "@/utils/events"; // <--- 1. Import Event Bus
+import { eventBus } from "@/utils/events";
 
 export function AuthButton() {
   const [user, setUser] = useState<User | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string>(""); // <--- 2. State untuk Avatar
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const [supabase] = useState(() => createClient());
 
-  // 3. Pisahkan logic fetch user agar bisa dipanggil ulang
   const fetchUserData = useCallback(async () => {
     const {
       data: { session },
@@ -36,7 +35,17 @@ export function AuthButton() {
     setUser(currentUser);
 
     if (currentUser) {
-      setAvatarUrl(currentUser.user_metadata?.avatar_url || "");
+      const { data: dbUser } = await supabase
+        .from("User")
+        .select("avatar")
+        .eq("id", currentUser.id)
+        .single();
+
+      setAvatarUrl(
+        dbUser?.avatar || currentUser.user_metadata?.avatar_url || ""
+      );
+    } else {
+      setAvatarUrl("");
     }
 
     setLoading(false);

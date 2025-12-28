@@ -138,14 +138,21 @@ export default function SettingsPage() {
 
       const publicUrl = publicUrlData.publicUrl;
 
-      // D. Update Metadata User Auth
+      // D. Update Metadata User Auth (Supaya update instan di sesi ini)
       const { error: updateError } = await supabase.auth.updateUser({
         data: { avatar_url: publicUrl },
       });
-
       if (updateError) throw updateError;
 
-      // E. Update State & Broadcast Event
+      // E. Update Tabel User di Database
+      const { error: dbError } = await supabase
+        .from("User")
+        .update({ avatar: publicUrl })
+        .eq("id", user.id);
+
+      if (dbError) throw dbError;
+
+      // F. Update State & Broadcast Event
       setAvatarUrl(publicUrl);
       toast.success("Foto profil berhasil diperbarui!");
       eventBus.emit("userUpdated");
