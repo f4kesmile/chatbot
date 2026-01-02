@@ -13,6 +13,7 @@ import {
   Trash2,
   Send,
   Check,
+  BellRing,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,11 +96,9 @@ export default function AdminInboxPage() {
   const [replyMessage, setReplyMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
 
-  // --- STATE UNTUK DELETE DIALOG ---
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [isDeletingTicket, setIsDeletingTicket] = useState(false);
 
-  // --- FETCH ---
   const fetchTickets = useCallback(
     async (opts?: { toastOnSuccess?: boolean }) => {
       setLoading(true);
@@ -131,9 +130,9 @@ export default function AdminInboxPage() {
         .in("ticketId", ticketIds)
         .order("createdAt", { ascending: true });
 
-      const formatted = ticketsData.map((ticket: any) => {
+      const formatted = ticketsData.map((ticket: SupportTicket) => {
         const myReplies =
-          repliesData?.filter((r: any) => r.ticketId === ticket.id) || [];
+          repliesData?.filter((r: Reply) => r.ticketId === ticket.id) || [];
         return { ...ticket, replies: myReplies };
       });
 
@@ -150,7 +149,6 @@ export default function AdminInboxPage() {
     fetchTickets();
   }, [fetchTickets]);
 
-  // --- ACTIONS ---
   const toggleReadStatus = async (ticket: SupportTicket, status: boolean) => {
     setTickets((prev) =>
       prev.map((t) =>
@@ -182,15 +180,12 @@ export default function AdminInboxPage() {
     toast.success(`Status tiket diubah: ${newStatus}`);
   };
 
-  // --- REFACTOR: EKSEKUSI HAPUS SETELAH KONFIRMASI ---
   const executeDeleteTicket = async () => {
     if (!ticketToDelete) return;
 
     setIsDeletingTicket(true);
-    // Optimistic Update
     setTickets((prev) => prev.filter((t) => t.id !== ticketToDelete));
 
-    // Jika tiket yang dihapus sedang dibuka di Sheet, tutup sheetnya
     if (selectedTicket?.id === ticketToDelete) setIsSheetOpen(false);
 
     const { error } = await supabase
@@ -200,7 +195,7 @@ export default function AdminInboxPage() {
 
     if (error) {
       toast.error("Gagal menghapus tiket dari database");
-      fetchTickets(); // Refresh jika gagal agar data kembali
+      fetchTickets();
     } else {
       toast.success("Tiket dihapus.");
     }
@@ -249,6 +244,25 @@ export default function AdminInboxPage() {
       toast.error("Gagal kirim.");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleManualNotify = async () => {
+    if (!selectedTicket) return;
+    toast.loading("Mengirim notifikasi email...");
+    try {
+      const res = await fetch(`/api/support/${selectedTicket.id}/notify`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        toast.dismiss();
+        toast.success("Notifikasi email terkirim ke user!");
+      } else {
+        throw new Error();
+      }
+    } catch (e) {
+      toast.dismiss();
+      toast.error("Gagal mengirim email.");
     }
   };
 
@@ -327,7 +341,6 @@ export default function AdminInboxPage() {
         </div>
       </div>
 
-      {/* --- FILTER BAR --- */}
       <div className="flex items-center w-full rounded-full border bg-card shadow-sm pl-4 pr-1 h-12 transition-all focus-within:ring-2 focus-within:ring-blue-500/20">
         <Search className="w-4 h-4 text-muted-foreground shrink-0 mr-3" />
         <input
@@ -389,7 +402,7 @@ export default function AdminInboxPage() {
               <div
                 key={ticket.id}
                 className={`
-                  flex flex-col md:flex-row gap-4 items-center justify-between 
+                  flex flex-col md:flex-row gap-4 items-end justify-between 
                   p-4 rounded-2xl border transition-all duration-200
                   ${
                     !ticket.isReadByAdmin
@@ -434,7 +447,7 @@ export default function AdminInboxPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 mt-1">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -482,7 +495,6 @@ export default function AdminInboxPage() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        // --- TRIGGER DIALOG ---
                         onClick={() => setTicketToDelete(ticket.id)}
                         className="text-red-500 focus:text-red-500"
                       >
@@ -509,13 +521,23 @@ export default function AdminInboxPage() {
                   {selectedTicket?.email}
                 </SheetDescription>
               </div>
-              {selectedTicket && getStatusBadge(selectedTicket.status)}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Kirim Notifikasi Email Manual"
+                  onClick={handleManualNotify}
+                  className="h-8 w-8 text-muted-foreground hover:text-blue-600"
+                >
+                  <BellRing className="w-4 h-4" />
+                </Button>
+                {selectedTicket && getStatusBadge(selectedTicket.status)}
+              </div>
             </div>
           </SheetHeader>
 
           <ScrollArea className="flex-1 p-6 bg-zinc-50/50 dark:bg-black/20">
             <div className="flex flex-col gap-6">
-              {/* TIKET AWAL */}
               <div className="flex gap-3">
                 <Avatar className="w-8 h-8 mt-1 border border-zinc-200 dark:border-zinc-800">
                   <AvatarFallback className="bg-zinc-200 dark:bg-zinc-800 text-xs">
@@ -535,7 +557,6 @@ export default function AdminInboxPage() {
                 </div>
               </div>
 
-              {/* REPLIES LIST */}
               {selectedTicket?.replies?.map((r) => (
                 <div
                   key={r.id}
@@ -596,7 +617,6 @@ export default function AdminInboxPage() {
             </div>
           </ScrollArea>
 
-          {/* INPUT CHAT AREA */}
           <div className="p-4 bg-background border-t">
             <div className="relative flex items-end gap-2 bg-muted/50 border border-input rounded-[26px] px-2 py-2 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all shadow-sm">
               <Textarea
@@ -648,7 +668,6 @@ export default function AdminInboxPage() {
         </SheetContent>
       </Sheet>
 
-      {/* --- ALERT DIALOG --- */}
       <AlertDialog
         open={!!ticketToDelete}
         onOpenChange={(open) => !open && setTicketToDelete(null)}

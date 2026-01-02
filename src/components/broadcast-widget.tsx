@@ -2,14 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import {
-  Megaphone,
-  AlertTriangle,
-  CheckCircle2,
-  ServerCrash,
-  Info,
-  X,
-} from "lucide-react";
+import { Megaphone, AlertTriangle, ServerCrash, Info, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -22,10 +15,9 @@ interface BroadcastItemProps {
   time: string;
 }
 
-// --- KOMPONEN KARTU (ANIMASI 1-PER-1 & RESPONSIF) ---
 const NotificationCard = ({
   item,
-  index, // Menerima index untuk delay
+  index,
   onClose,
 }: {
   item: BroadcastItemProps;
@@ -48,36 +40,32 @@ const NotificationCard = ({
   return (
     <motion.div
       layout
-      // ANIMASI: Delay berdasarkan index (item ke-1 delay 0s, ke-2 delay 0.15s, dst)
-      initial={{ opacity: 0, y: -50, scale: 0.9 }}
+      initial={{ opacity: 0, y: -20, scale: 0.95 }} // Animasi masuk lebih halus dari atas
       animate={{
         opacity: 1,
         y: 0,
         scale: 1,
         transition: {
           type: "spring",
-          stiffness: 180,
-          damping: 25,
-          delay: index * 0.15,
+          stiffness: 300,
+          damping: 30,
+          delay: index * 0.1,
         },
       }}
-      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+      exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.2 } }}
       className={cn(
-        "relative overflow-hidden mb-3 pointer-events-auto",
-        "flex items-start gap-4 p-4 pr-10",
-        "rounded-3xl",
+        "relative overflow-hidden mb-2 pointer-events-auto", // mb-2 agar jarak antar kartu rapat
+        "flex items-start gap-3 p-3.5 pr-9", // Padding sedikit diperkecil untuk mobile
+        "rounded-2xl",
 
-        // --- PENGATURAN LEBAR RESPONSIF ---
-        "w-[92%]", // HP: Agak pendek (92% layar) agar ada sisa ruang kiri-kanan
-        "sm:w-[380px]", // Tablet: Fixed width yang enak dilihat
-        "md:w-[450px]", // Desktop: Sedikit lebih lebar
+        // --- RESPONSIVE WIDTH FIX ---
+        "w-full", // Mobile: Full width container
+        "mx-auto", // Center alignment
 
-        // WARNA & BORDER
-        "bg-white dark:bg-zinc-900",
-        "border border-zinc-200 dark:border-zinc-800",
-
-        // EFEK SHADOW (Per Kartu)
-        "shadow-lg shadow-zinc-200/40 dark:shadow-black/40"
+        // WARNA & BORDER (Glassmorphism Effect)
+        "bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md",
+        "border border-zinc-200/60 dark:border-zinc-800/60",
+        "shadow-xl shadow-zinc-200/20 dark:shadow-black/20"
       )}
     >
       {/* Tombol Close */}
@@ -88,28 +76,28 @@ const NotificationCard = ({
         }}
         className="absolute top-3 right-3 p-1 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors z-20"
       >
-        <X size={18} />
+        <X size={16} />
       </button>
 
       {/* Icon Box */}
       <div
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full mt-1"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full mt-0.5"
         style={{ backgroundColor: `${item.color}15`, color: item.color }}
       >
         {getIcon()}
       </div>
 
       {/* Content Text */}
-      <div className="flex flex-col gap-1 w-full min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+      <div className="flex flex-col gap-0.5 w-full min-w-0">
+        <div className="flex items-center justify-between pr-2">
+          <span className="text-sm font-bold text-zinc-800 dark:text-zinc-100 truncate">
             {item.title}
           </span>
-          <span className="text-[10px] font-medium text-muted-foreground bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full whitespace-nowrap">
+          <span className="text-[10px] font-medium text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full whitespace-nowrap">
             {item.time}
           </span>
         </div>
-        <p className="text-xs font-medium text-muted-foreground leading-relaxed break-words">
+        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 leading-relaxed break-words">
           {item.message}
         </p>
       </div>
@@ -117,27 +105,22 @@ const NotificationCard = ({
   );
 };
 
-// --- WIDGET CONTAINER ---
 export function BroadcastWidget({ className }: { className?: string }) {
   const [notifications, setNotifications] = useState<BroadcastItemProps[]>([]);
   const [supabase] = useState(() => createClient());
 
   const parseConfigToNotifications = (config: any) => {
     const newItems: BroadcastItemProps[] = [];
-
-    // 1. Maintenance
     if (config?.maintenanceMode) {
       newItems.push({
         id: "maint-mode",
-        title: "System Maintenance",
-        message: "Sistem sedang dalam perbaikan. Akses mungkin terbatas.",
-        time: "Penting",
+        title: "Maintenance",
+        message: "Sistem sedang dalam perbaikan.",
+        time: "Now",
         icon: "danger",
         color: "#ef4444",
       });
     }
-
-    // 2. Broadcast (Multi-line)
     if (config?.broadcastMessage) {
       const lines = config.broadcastMessage
         .split("\n")
@@ -145,15 +128,14 @@ export function BroadcastWidget({ className }: { className?: string }) {
       lines.forEach((line: string, index: number) => {
         newItems.push({
           id: `msg-${index}`,
-          title: "Pengumuman Admin",
+          title: "Pengumuman",
           message: line,
-          time: "Baru saja",
+          time: "Baru Saja",
           icon: config.maintenanceMode ? "warning" : "megaphone",
           color: config.maintenanceMode ? "#f59e0b" : "#2563eb",
         });
       });
     }
-
     setNotifications(newItems);
   };
 
@@ -198,23 +180,20 @@ export function BroadcastWidget({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "w-full flex flex-col items-center gap-3 pointer-events-none",
+        "w-full flex flex-col items-center pointer-events-none px-2 sm:px-0",
         className
       )}
     >
-      <div className="w-full flex flex-col items-center gap-3">
-        <AnimatePresence mode="popLayout">
-          {notifications.map((item, index) => (
-            // PASS INDEX KE SINI
-            <NotificationCard
-              key={item.id}
-              item={item}
-              index={index}
-              onClose={handleClose}
-            />
-          ))}
-        </AnimatePresence>
-      </div>
+      <AnimatePresence mode="popLayout">
+        {notifications.map((item, index) => (
+          <NotificationCard
+            key={item.id}
+            item={item}
+            index={index}
+            onClose={handleClose}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

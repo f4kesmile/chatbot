@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Inbox,
   ArrowRight,
+  Calendar,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -20,17 +21,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
-// Sesuaikan Interface dengan Schema Database SupportTicket
 interface SupportTicket {
   id: string;
-  subject: string; // Dulu 'category', sekarang kita pakai subject agar konsisten
-  message: string; // Dulu 'summary'
-  status: "OPEN" | "IN_PROGRESS" | "CLOSED"; // Sesuaikan enum
+  subject: string;
+  message: string;
+  status: "OPEN" | "IN_PROGRESS" | "CLOSED";
   createdAt: string;
-  email: string; // Email user langsung ada di tabel SupportTicket
+  email: string;
+  User?: {
+    name: string | null;
+    avatar: string | null;
+  } | null;
 }
 
 export function AdminInbox() {
@@ -39,22 +44,29 @@ export function AdminInbox() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Fungsi Fetch Data
   const fetchTickets = useCallback(
     async (isBackground = false) => {
       if (!isBackground) setLoading(true);
 
       const { data, error } = await supabase
-        .from("SupportTicket") // <--- NAMA TABEL YANG BENAR
-        .select("*")
-        .order("updatedAt", { ascending: false }) // Urutkan dari yang baru diupdate
-        .limit(5); // Ambil 5 terbaru saja untuk dashboard
+        .from("SupportTicket")
+        .select(
+          `
+          *,
+          User (
+            name,
+            avatar
+          )
+        `
+        )
+        .order("updatedAt", { ascending: false })
+        .limit(5);
 
       if (error) {
         console.error("Error fetching tickets:", error);
         toast.error("Gagal memuat inbox");
       } else if (data) {
-        setTickets(data as SupportTicket[]);
+        setTickets(data as unknown as SupportTicket[]);
       }
 
       if (!isBackground) setLoading(false);
@@ -62,18 +74,15 @@ export function AdminInbox() {
     [supabase]
   );
 
-  // Initial Load & Realtime Subscription
   useEffect(() => {
     fetchTickets();
-
-    // Subscribe ke perubahan tabel SupportTicket
     const channel = supabase
       .channel("realtime-dashboard-inbox")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "SupportTicket" },
         (payload) => {
-          fetchTickets(true); // Refresh diam-diam
+          fetchTickets(true);
           if (payload.eventType === "INSERT") {
             toast.info("Tiket baru masuk!");
           }
@@ -88,19 +97,16 @@ export function AdminInbox() {
 
   const updateStatus = useCallback(
     async (id: string, newStatus: SupportTicket["status"]) => {
-      // Optimistic UI Update
       setTickets((prev) =>
         prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
       );
-
       const { error } = await supabase
         .from("SupportTicket")
         .update({ status: newStatus })
         .eq("id", id);
-
       if (error) {
         toast.error("Gagal mengubah status!");
-        fetchTickets(true); // Revert jika gagal
+        fetchTickets(true);
       } else {
         toast.success(`Status tiket diperbarui`);
       }
@@ -112,31 +118,28 @@ export function AdminInbox() {
     switch (status) {
       case "OPEN":
         return (
-          <Badge variant="destructive" className="rounded-full px-2 gap-1">
-            <AlertCircle className="h-3 w-3" /> Baru
+          <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+            Baru
           </Badge>
         );
       case "IN_PROGRESS":
         return (
-          <Badge
-            variant="secondary"
-            className="rounded-full px-2 gap-1 bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-          >
-            <Clock className="h-3 w-3" /> Proses
+          <Badge className="h-5 px-1.5 text-[10px] bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-500">
+            Proses
           </Badge>
         );
       case "CLOSED":
         return (
           <Badge
             variant="outline"
-            className="rounded-full px-2 gap-1 text-green-600 bg-green-50 border-green-200"
+            className="h-5 px-1.5 text-[10px] text-green-600 border-green-200 dark:border-green-800 dark:text-green-500"
           >
-            <CheckCircle2 className="h-3 w-3" /> Selesai
+            Selesai
           </Badge>
         );
       default:
         return (
-          <Badge variant="outline" className="rounded-full">
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
             {status}
           </Badge>
         );
@@ -146,17 +149,14 @@ export function AdminInbox() {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
       {/* HEADER */}
-      <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <h3 className="font-bold text-lg flex items-center gap-2">
-            <Inbox className="w-5 h-5 text-blue-600" /> Inbox Terbaru
-          </h3>
-        </div>
-
+      <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900/50">
+        <h3 className="font-bold text-lg flex items-center gap-2">
+          <Inbox className="w-5 h-5 text-blue-600" /> Inbox Terbaru
+        </h3>
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-2 text-muted-foreground hover:text-primary rounded-full"
+          className="h-8 gap-2 text-muted-foreground hover:text-primary rounded-full text-xs"
           onClick={() => fetchTickets()}
         >
           <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
@@ -183,101 +183,125 @@ export function AdminInbox() {
             <div
               key={ticket.id}
               className={`
-                p-4 flex flex-col sm:flex-row sm:items-center justify-between transition-all gap-4 group 
-                hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer
+                group relative p-4 transition-all cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50
                 ${
                   ticket.status === "OPEN"
-                    ? "bg-red-50/30 dark:bg-red-900/10"
+                    ? "bg-blue-50/30 dark:bg-blue-900/5"
                     : ""
                 }
               `}
-              onClick={() => router.push("/admin/inbox")} // Klik lari ke halaman Inbox Penuh
+              onClick={() => router.push(`/admin/inbox/${ticket.id}`)}
             >
-              <div className="space-y-1.5 flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`text-sm font-semibold truncate ${
-                      ticket.status === "OPEN"
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-foreground"
-                    }`}
-                  >
-                    {ticket.email}
-                  </span>
-                  {getStatusBadge(ticket.status)}
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                    {new Date(ticket.createdAt).toLocaleDateString("id-ID", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
+              {/* --- BARIS ATAS: User Info & Actions --- */}
+              <div className="flex items-start gap-3">
+                <Avatar className="h-10 w-10 min-w-[2.5rem] border border-zinc-200 dark:border-zinc-700 shrink-0">
+                  <AvatarImage
+                    src={ticket.User?.avatar || ""}
+                    className="object-cover w-full h-full"
+                  />
+
+                  <AvatarFallback className="flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-100 w-full h-full">
+                    {(ticket.User?.name
+                      ? ticket.User.name.substring(0, 2)
+                      : ticket.email.substring(0, 2)
+                    ).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col">
+                      <span
+                        className={`text-sm font-semibold truncate ${
+                          ticket.status === "OPEN"
+                            ? "text-blue-600 dark:text-blue-400"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {ticket.User?.name || ticket.email}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        {ticket.email}
+                      </span>
+                    </div>
+
+                    {/* --- ACTION BUTTONS (POJOK KANAN ATAS) --- */}
+                    <div
+                      className="flex items-center gap-1 pl-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* Badge Status */}
+                      <div className="mr-2">
+                        {getStatusBadge(ticket.status)}
+                      </div>
+
+                      {/* Dropdown Menu */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-full text-muted-foreground hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-xl">
+                          <DropdownMenuItem
+                            onClick={() => updateStatus(ticket.id, "OPEN")}
+                          >
+                            <AlertCircle className="mr-2 h-4 w-4 text-red-500" />{" "}
+                            Tandai Baru
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              updateStatus(ticket.id, "IN_PROGRESS")
+                            }
+                          >
+                            <Clock className="mr-2 h-4 w-4 text-yellow-500" />{" "}
+                            Tandai Proses
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => updateStatus(ticket.id, "CLOSED")}
+                          >
+                            <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />{" "}
+                            Tandai Selesai
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* --- BARIS BAWAH: Subject & Message --- */}
+                  <div className="mt-2 pr-2">
+                    <p className="text-sm font-medium text-foreground leading-tight line-clamp-1 mb-0.5">
+                      {ticket.subject}
+                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-1 leading-relaxed">
+                      {ticket.message}
+                    </p>
+                    <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                      <Calendar className="w-3 h-3" />
+                      {new Date(ticket.createdAt).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  </div>
                 </div>
-
-                <p className="text-sm text-muted-foreground leading-snug line-clamp-1">
-                  <span className="font-medium text-foreground">
-                    {ticket.subject}
-                  </span>{" "}
-                  — {ticket.message}
-                </p>
-              </div>
-
-              <div
-                className="flex items-center gap-2"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="rounded-xl">
-                    <DropdownMenuItem
-                      onClick={() => updateStatus(ticket.id, "OPEN")}
-                    >
-                      <AlertCircle className="mr-2 h-4 w-4 text-red-500" />{" "}
-                      Tandai Baru
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => updateStatus(ticket.id, "IN_PROGRESS")}
-                    >
-                      <Clock className="mr-2 h-4 w-4 text-yellow-500" /> Tandai
-                      Proses
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => updateStatus(ticket.id, "CLOSED")}
-                    >
-                      <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />{" "}
-                      Tandai Selesai
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Tombol Panah ke Detail */}
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 rounded-full text-muted-foreground"
-                  onClick={() => router.push("/admin/inbox")}
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
               </div>
             </div>
           ))
         )}
       </div>
 
+      {/* FOOTER */}
       <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900">
         <Button
           variant="outline"
-          className="w-full rounded-full text-xs h-9"
+          className="w-full rounded-full text-xs h-9 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           onClick={() => router.push("/admin/inbox")}
         >
           Lihat Semua Inbox

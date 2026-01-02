@@ -1,6 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { sendEmailNotification } from "@/lib/email";
+import { getSupportEmailTemplate } from "@/lib/email-templates";
 
 // GET: Baca Detail Tiket
 export async function GET(
@@ -24,13 +26,11 @@ export async function GET(
 
     if (!ticket) return NextResponse.json({ error: "Not Found" }, { status: 404 });
 
-    // LOGIKA UPDATE READ STATUS
     if (ticket.userId === user.id) {
       if (!ticket.isReadByUser) {
         await prisma.supportTicket.update({ where: { id }, data: { isReadByUser: true } });
       }
     } else {
-      // Asumsi selain user pemilik adalah Admin
       if (!ticket.isReadByAdmin) {
         await prisma.supportTicket.update({ where: { id }, data: { isReadByAdmin: true } });
       }
@@ -59,7 +59,6 @@ export async function POST(
     const body = await req.json();
     const { message, senderRole } = body; 
 
-    // Ambil Nama User
     const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
         select: { name: true, email: true }
@@ -80,7 +79,8 @@ export async function POST(
       }
     });
 
-    // Update Status Tiket
+    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+
     if (senderRole === "ADMIN") {
       await prisma.supportTicket.update({
         where: { id },
@@ -90,6 +90,20 @@ export async function POST(
             updatedAt: new Date() 
         }
       });
+
+      if (ticket?.email) {
+        const emailHtml = getSupportEmailTemplate(
+          "Balasan dari Admin Support",
+          `Admin membalas tiket <b>"${ticket.subject}"</b>:<br/><br/>"<i>${message}</i>"`,
+          `${process.env.NEXT_PUBLIC_APP_URL}/tickets`
+        );
+        sendEmailNotification({
+          to: ticket.email,
+          subject: `[Balasan] ${ticket.subject}`,
+          html: emailHtml
+        });
+      }
+
     } else {
       await prisma.supportTicket.update({
         where: { id },
@@ -99,6 +113,20 @@ export async function POST(
             updatedAt: new Date() 
         }
       });
+
+      const adminEmail = process.env.ADMIN_EMAIL_NOTIFICATION;
+      if (adminEmail && ticket) {
+        const emailHtml = getSupportEmailTemplate(
+          "User Membalas Tiket",
+          `User <b>${ticket.email}</b> membalas tiket <b>"${ticket.subject}"</b>:<br/><br/>"<i>${message}</i>"`,
+          `${process.env.NEXT_PUBLIC_APP_URL}/admin/inbox`
+        );
+        sendEmailNotification({
+          to: adminEmail,
+          subject: `[Reply] ${ticket.subject}`,
+          html: emailHtml
+        });
+      }
     }
 
     return NextResponse.json(reply);

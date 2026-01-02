@@ -18,9 +18,9 @@ import {
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
-// --- IMPORT ALERT DIALOG ---
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,11 +46,11 @@ Jika tidak tahu jawabannya, arahkan user untuk membuat tiket baru.
 Gunakan bahasa Indonesia yang sopan dan jelas.`;
 
 export default function KnowledgePage() {
-  // --- STATE UNTUK FIX HYDRATION ERROR ---
   const [isMounted, setIsMounted] = useState(false);
-
   const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(true);
+
+  const [activeTab, setActiveTab] = useState("knowledge");
 
   const [knowledgeList, setKnowledgeList] = useState<KnowledgeItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,12 +62,11 @@ export default function KnowledgePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
-  // --- STATE UNTUK DELETE DIALOG ---
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- EFFECT UNTUK MENANDAI MOUNTED ---
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
   }, []);
 
@@ -103,7 +102,6 @@ export default function KnowledgePage() {
       return;
     }
     setIsSubmitting(true);
-    // Tidak mengirim 'id' karena database sudah diset DEFAULT gen_random_uuid() atau v4()
     const { error } = await supabase.from("KnowledgeBase").insert({
       title: newInfoTitle,
       content: newInfoContent,
@@ -120,7 +118,6 @@ export default function KnowledgePage() {
     }
   }
 
-  // --- REFACTOR: EKSEKUSI HAPUS SETELAH KONFIRMASI ---
   async function executeDelete() {
     if (!deleteId) return;
 
@@ -149,13 +146,11 @@ export default function KnowledgePage() {
     let result;
 
     if (systemPromptId) {
-      // Logic Update
       result = await supabase
         .from("KnowledgeBase")
         .update({ content: systemPrompt })
         .eq("id", systemPromptId);
     } else {
-      // Logic Insert Baru (Tanpa kirim ID agar database yang buat otomatis)
       result = await supabase.from("KnowledgeBase").insert({
         title: "AI_PERSONALITY",
         content: systemPrompt,
@@ -194,13 +189,17 @@ export default function KnowledgePage() {
       item.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // --- CEGAH RENDER SEBELUM MOUNT SELESAI ---
+  const MENU_TABS = [
+    { id: "knowledge", label: "Daftar Pengetahuan", icon: BookOpen },
+    { id: "personality", label: "Karakter AI", icon: Bot },
+  ];
+
   if (!isMounted) {
     return null;
   }
 
   return (
-    <div className="flex flex-col h-full p-6 space-y-8 overflow-y-auto bg-background">
+    <div className="flex flex-col h-full p-6 space-y-8 overflow-y-auto bg-background pb-20">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">
           AI Knowledge & Personality
@@ -211,33 +210,61 @@ export default function KnowledgePage() {
         </p>
       </div>
 
-      <Tabs defaultValue="knowledge" className="flex-1 flex flex-col space-y-8">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="flex-1 flex flex-col space-y-8"
+      >
         <div className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-zinc-100 dark:bg-zinc-800 p-1.5 rounded-xl h-auto">
-            <TabsTrigger
-              value="knowledge"
-              className="rounded-lg py-3 text-sm font-medium transition-all data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950 data-[state=active]:text-primary data-[state=active]:shadow-sm gap-2 justify-center"
-            >
-              <BookOpen className="w-4 h-4" /> Daftar Pengetahuan
-            </TabsTrigger>
-            <TabsTrigger
-              value="personality"
-              className="rounded-lg py-3 text-sm font-medium transition-all data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950 data-[state=active]:text-primary data-[state=active]:shadow-sm gap-2 justify-center"
-            >
-              <Bot className="w-4 h-4" /> Karakter AI
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-full border border-zinc-200 dark:border-zinc-700/50 w-full">
+            {MENU_TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "relative flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ease-in-out",
+                    isActive
+                      ? "flex-[2] bg-white dark:bg-zinc-950 text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+                      : "flex-1 text-muted-foreground hover:text-foreground hover:bg-zinc-200/50 dark:hover:bg-white/5"
+                  )}
+                >
+                  <tab.icon
+                    size={18}
+                    className={cn(
+                      "transition-colors",
+                      isActive && "text-primary"
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "overflow-hidden whitespace-nowrap transition-all duration-300",
+                      isActive
+                        ? "max-w-[200px] opacity-100 ml-1"
+                        : "max-w-0 opacity-0"
+                    )}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <TabsContent
           value="knowledge"
-          className="flex-1 mt-0 focus-visible:outline-none"
+          className="flex-1 mt-0 focus-visible:outline-none animate-in fade-in slide-in-from-bottom-2 duration-500"
         >
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
             <div className="lg:col-span-1">
-              <div className="rounded-2xl border bg-card text-card-foreground shadow-sm p-6 space-y-6 sticky top-6">
-                <div className="flex items-center gap-2 font-semibold text-primary text-lg">
-                  <Plus className="w-5 h-5" /> Tambah Pengetahuan
+              <div className="rounded-3xl border bg-card text-card-foreground shadow-sm p-6 space-y-6 sticky top-6">
+                <div className="flex items-center gap-2 font-bold text-lg">
+                  <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  Tambah Data
                 </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">
@@ -247,20 +274,20 @@ export default function KnowledgePage() {
                     placeholder="Misal: Cara Reset Password"
                     value={newInfoTitle}
                     onChange={(e) => setNewInfoTitle(e.target.value)}
-                    className="bg-transparent"
+                    className="bg-transparent rounded-xl"
                   />
                 </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Jawaban Bot</Label>
                   <Textarea
                     placeholder="Jelaskan detail jawabannya di sini..."
-                    className="min-h-[150px] resize-none bg-transparent"
+                    className="min-h-[150px] resize-none bg-transparent rounded-xl"
                     value={newInfoContent}
                     onChange={(e) => setNewInfoContent(e.target.value)}
                   />
                 </div>
                 <Button
-                  className="w-full bg-primary hover:bg-primary/90 rounded-xl"
+                  className="w-full bg-primary hover:bg-primary/90 rounded-xl font-semibold"
                   onClick={addKnowledge}
                   disabled={isSubmitting}
                 >
@@ -268,7 +295,7 @@ export default function KnowledgePage() {
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   ) : (
                     <Save className="w-4 h-4 mr-2" />
-                  )}{" "}
+                  )}
                   Simpan ke Database
                 </Button>
               </div>
@@ -276,10 +303,10 @@ export default function KnowledgePage() {
 
             <div className="lg:col-span-2 flex flex-col space-y-6">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Cari knowledge base..."
-                  className="pl-10 bg-card border-border rounded-xl h-11"
+                  className="pl-11 bg-card border-border rounded-full h-12 shadow-sm focus-visible:ring-primary/20"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -287,19 +314,19 @@ export default function KnowledgePage() {
               <div className="space-y-4">
                 {loading ? (
                   <div className="text-center py-20 text-muted-foreground">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />{" "}
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
                     Memuat data...
                   </div>
                 ) : filteredList.length === 0 ? (
-                  <div className="text-center py-20 text-muted-foreground border border-dashed rounded-2xl bg-muted/30">
-                    <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />{" "}
+                  <div className="text-center py-20 text-muted-foreground border border-dashed rounded-3xl bg-muted/30">
+                    <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p>Belum ada data knowledge base.</p>
                   </div>
                 ) : (
                   filteredList.map((item) => (
                     <div
                       key={item.id}
-                      className="p-6 rounded-2xl border bg-card text-card-foreground shadow-sm group hover:border-primary/50 transition-all hover:shadow-md"
+                      className="p-6 rounded-3xl border bg-card text-card-foreground shadow-sm group hover:border-primary/30 transition-all hover:shadow-md"
                     >
                       <div className="flex justify-between items-start gap-4">
                         <div className="space-y-2">
@@ -313,8 +340,7 @@ export default function KnowledgePage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                          // --- TRIGGER DELETE DIALOG ---
+                          className="text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all rounded-full shrink-0"
                           onClick={() => setDeleteId(item.id)}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -330,17 +356,18 @@ export default function KnowledgePage() {
 
         <TabsContent
           value="personality"
-          className="max-w-5xl mx-auto w-full mt-0 focus-visible:outline-none"
+          className="max-w-5xl mx-auto w-full mt-0 focus-visible:outline-none animate-in fade-in slide-in-from-bottom-2 duration-500"
         >
-          <div className="rounded-2xl border bg-card shadow-sm p-8 space-y-8">
+          <div className="rounded-3xl border bg-card shadow-sm p-8 space-y-8">
             <div className="flex flex-col gap-2 border-b border-border pb-6">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-yellow-500" /> System Prompt
                 (Instruksi Dasar)
               </h2>
               <p className="text-sm text-muted-foreground">
-                Ini adalah "otak" dasar bot Anda. Tuliskan instruksi tentang
-                siapa dia, bagaimana cara dia bicara, dan apa batasan tugasnya.
+                Ini adalah &quot;otak&quot; dasar bot Anda. Tuliskan instruksi
+                tentang siapa dia, bagaimana cara dia bicara, dan apa batasan
+                tugasnya.
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -350,7 +377,7 @@ export default function KnowledgePage() {
                     Instruksi Sistem
                   </Label>
                   <Textarea
-                    className="min-h-[350px] font-mono text-sm leading-relaxed p-5 bg-muted/20 focus:bg-background transition-colors rounded-xl border-border focus-visible:ring-primary"
+                    className="min-h-[350px] font-mono text-sm leading-relaxed p-5 bg-muted/30 focus:bg-background transition-colors rounded-2xl border-border focus-visible:ring-primary"
                     placeholder="Kamu adalah asisten AI..."
                     value={systemPrompt}
                     onChange={(e) => setSystemPrompt(e.target.value)}
@@ -360,19 +387,19 @@ export default function KnowledgePage() {
                   <Button
                     onClick={saveSystemPrompt}
                     disabled={isSavingPrompt}
-                    className="bg-primary hover:bg-primary/90 rounded-xl px-6"
+                    className="bg-primary hover:bg-primary/90 rounded-xl px-6 font-semibold"
                   >
                     {isSavingPrompt ? (
                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     ) : (
                       <Save className="w-4 h-4 mr-2" />
-                    )}{" "}
+                    )}
                     Simpan Pengaturan
                   </Button>
                 </div>
               </div>
               <div className="md:col-span-1 space-y-6">
-                <div className="bg-muted/40 p-5 rounded-xl border border-border">
+                <div className="bg-muted/30 p-5 rounded-3xl border border-border">
                   <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" /> Template Cepat
                   </h3>
@@ -380,7 +407,7 @@ export default function KnowledgePage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full justify-start h-auto py-3 px-4 rounded-lg bg-background hover:bg-muted transition-all border-border"
+                      className="w-full justify-start h-auto py-3 px-4 rounded-xl bg-background hover:bg-muted transition-all border-border shadow-sm"
                       onClick={() => applyPreset("formal")}
                     >
                       <div className="text-left">
@@ -395,7 +422,7 @@ export default function KnowledgePage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full justify-start h-auto py-3 px-4 rounded-lg bg-background hover:bg-muted transition-all border-border"
+                      className="w-full justify-start h-auto py-3 px-4 rounded-xl bg-background hover:bg-muted transition-all border-border shadow-sm"
                       onClick={() => applyPreset("friendly")}
                     >
                       <div className="text-left">
@@ -410,7 +437,7 @@ export default function KnowledgePage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full justify-start h-auto py-3 px-4 rounded-lg bg-background hover:bg-muted transition-all border-border"
+                      className="w-full justify-start h-auto py-3 px-4 rounded-xl bg-background hover:bg-muted transition-all border-border shadow-sm"
                       onClick={() => applyPreset("pirate")}
                     >
                       <div className="text-left">
@@ -424,14 +451,17 @@ export default function KnowledgePage() {
                     </Button>
                   </div>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-xl border border-blue-100 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-300">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-3xl border border-blue-100 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-300">
                   <strong className="block mb-3 text-sm">
                     Tips Prompting:
                   </strong>
                   <ul className="list-disc list-inside space-y-2 opacity-90 leading-relaxed">
-                    <li>Berikan nama pada bot (misal: "Saya Boti").</li>
                     <li>
-                      Tentukan batasan (misal: "Jangan jawab soal matematika").
+                      Berikan nama pada bot (misal: &quot;Saya Boti&quot;).
+                    </li>
+                    <li>
+                      Tentukan batasan (misal: &quot;Jangan jawab soal
+                      matematika&quot;).
                     </li>
                     <li>Tentukan nada bicara (sopan, to-the-point).</li>
                   </ul>
@@ -442,12 +472,11 @@ export default function KnowledgePage() {
         </TabsContent>
       </Tabs>
 
-      {/* --- ALERT DIALOG --- */}
       <AlertDialog
         open={!!deleteId}
         onOpenChange={(open) => !open && setDeleteId(null)}
       >
-        <AlertDialogContent className="rounded-2xl">
+        <AlertDialogContent className="rounded-3xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Pengetahuan Ini?</AlertDialogTitle>
             <AlertDialogDescription>

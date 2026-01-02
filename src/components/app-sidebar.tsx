@@ -281,7 +281,15 @@ export function AppSidebar() {
   return (
     <>
       <Sidebar open={open} setOpen={setOpen}>
-        <SidebarBody className="justify-between gap-10 bg-zinc-50 dark:bg-zinc-950 border-r md:border-r-0 md:border md:rounded-3xl border-zinc-200 dark:border-zinc-800 shadow-xl">
+        <SidebarBody
+          className={cn(
+            "justify-between gap-10",
+            "bg-transparent md:bg-zinc-50 md:dark:bg-zinc-950",
+            "border-none md:border-r md:border-zinc-200 md:dark:border-zinc-800",
+            "shadow-none md:shadow-xl",
+            "md:rounded-3xl"
+          )}
+        >
           <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden no-scrollbar">
             {open ? <Logo /> : <LogoIcon />}
 

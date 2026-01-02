@@ -7,15 +7,17 @@ datasource db {
 }
 
 model User {
-  id        String   @id
-  email     String   @unique
-  name      String?
-  avatar    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  role      String   @default("user")
-  chats     Chat[]
-  tickets   Ticket[]
+  id                 String          @id
+  email              String          @unique
+  name               String?
+  avatar             String?
+  customInstructions String?         @db.Text
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  role               String          @default("user")
+  chats              Chat[]
+  tickets            Ticket[]
+  supportTickets     SupportTicket[]
 }
 
 model Chat {
@@ -85,6 +87,7 @@ model SupportTicket {
   rating        Int?
   aiSummary     String?
   replies       TicketReply[]
+  user          User?         @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }

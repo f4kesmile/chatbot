@@ -114,17 +114,19 @@ export const MobileSidebar = ({
     <>
       <div
         className={cn(
-          // UBAH DISINI: h-14 (56px) agar cukup untuk padding py-4
-          "h-14 px-4 py-4 flex flex-row md:hidden items-center justify-between bg-neutral-100 dark:bg-neutral-800 w-full border-b border-neutral-200 dark:border-neutral-700"
+          "h-14 px-4 py-4 flex flex-row md:hidden items-center justify-between w-full absolute top-0 left-0 pointer-events-none",
+          open ? "z-[200]" : "z-[200]",
+          className
         )}
         {...props}
       >
-        <div className="flex justify-start z-20 w-full">
+        <div className="flex justify-start z-20 w-fit pointer-events-auto">
           <IconMenu2
             className="text-neutral-800 dark:text-neutral-200 cursor-pointer"
             onClick={() => setOpen(!open)}
           />
         </div>
+
         <AnimatePresence>
           {open && (
             <motion.div
@@ -136,8 +138,10 @@ export const MobileSidebar = ({
                 ease: "easeInOut",
               }}
               className={cn(
-                "fixed h-full w-full inset-0 bg-white dark:bg-neutral-900 p-10 z-[100] flex flex-col justify-between",
-                className
+                // Konten Sidebar tetap tinggi agar elemen di dalamnya aman
+                "fixed h-full w-full inset-0 p-10 z-[200] flex flex-col justify-between pointer-events-auto",
+                className,
+                "bg-white dark:bg-zinc-900"
               )}
             >
               <div

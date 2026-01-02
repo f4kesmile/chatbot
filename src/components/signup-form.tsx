@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { IconBrandGoogle } from "@tabler/icons-react";
+import { Eye, EyeOff } from "lucide-react"; // Import Icon Mata
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
@@ -15,7 +16,10 @@ export function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null); // 2. State
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  // State untuk lihat password
+  const [showPassword, setShowPassword] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
@@ -36,7 +40,6 @@ export function SignupForm() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // 3. Cek Captcha
     if (!captchaToken) {
       toast.error("Mohon selesaikan verifikasi Captcha.");
       return;
@@ -51,12 +54,21 @@ export function SignupForm() {
         data: {
           full_name: fullName,
         },
-        captchaToken: captchaToken, // 4. Kirim Token
+        captchaToken: captchaToken,
       },
     });
 
     if (error) {
-      toast.error("Gagal Daftar", { description: error.message });
+      // --- LOGIKA PESAN ERROR CUSTOM ---
+      let errorMsg = error.message;
+
+      if (errorMsg.includes("User already registered")) {
+        errorMsg = "Email sudah terdaftar. Silakan login.";
+      } else if (errorMsg.includes("Password should be at least")) {
+        errorMsg = "Password minimal 6 karakter.";
+      }
+
+      toast.error("Gagal Daftar", { description: errorMsg });
     } else {
       if (data.session) {
         toast.success("Pendaftaran Berhasil!", {
@@ -109,17 +121,27 @@ export function SignupForm() {
 
         <LabelInputContainer className="mb-4">
           <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            placeholder="••••••••"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              placeholder="••••••••"
+              // Ubah type berdasarkan state showPassword
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="pr-10" // Padding kanan untuk icon
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </LabelInputContainer>
 
-        {/* 5. Komponen Turnstile */}
         <div className="mb-6 flex justify-center">
           <Turnstile
             siteKey={process.env.NEXT_PUBLIC_CLOUDFLARE_SITE_KEY || ""}

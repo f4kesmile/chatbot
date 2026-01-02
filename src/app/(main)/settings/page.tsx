@@ -13,11 +13,11 @@ import {
   Check,
   ZoomIn,
   Image as ImageIcon,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -37,12 +37,17 @@ import { useRouter } from "next/navigation";
 import { eventBus } from "@/utils/events";
 import Cropper from "react-easy-crop";
 import getCroppedImg from "@/utils/cropImage";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [supabase] = useState(() => createClient());
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+
+  // --- TABS STATE ---
+  const [activeTab, setActiveTab] = useState("profile");
 
   // --- PROFILE STATE ---
   const [fullName, setFullName] = useState("");
@@ -54,6 +59,9 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
+  // --- AI PREFERENCES STATE ---
+  const [customInstructions, setCustomInstructions] = useState("");
+
   // --- CROPPER STATE ---
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -62,7 +70,7 @@ export default function SettingsPage() {
   const [isCropDialogOpen, setIsCropDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- 1. FETCH USER (DARI DATABASE) ---
+  // --- 1. FETCH USER ---
   useEffect(() => {
     let mounted = true;
     async function getUserData() {
@@ -72,19 +80,15 @@ export default function SettingsPage() {
 
       if (mounted && user) {
         setUser(user);
-
-        // A. Ambil Data dari Database (Tabel User) -> Sumber Kebenaran Utama
         const { data: dbUser } = await supabase
           .from("User")
-          .select("name, avatar")
+          .select("name, avatar, customInstructions")
           .eq("id", user.id)
           .single();
 
-        // B. Set State (Prioritas: Database -> Metadata -> Kosong)
         setFullName(dbUser?.name || user.user_metadata?.full_name || "");
         setAvatarUrl(dbUser?.avatar || user.user_metadata?.avatar_url || "");
-
-        // Bio masih dari metadata karena di schema database 'User' tidak ada kolom bio
+        setCustomInstructions(dbUser?.customInstructions || "");
         setBio(user.user_metadata?.bio || "");
       }
     }
@@ -96,13 +100,12 @@ export default function SettingsPage() {
 
   const initial = user?.email?.charAt(0).toUpperCase() || "U";
 
-  // --- 2. PILIH FILE & BUKA CROPPER ---
+  // --- 2. CROPPER LOGIC ---
   const onSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       if (!file.type.startsWith("image/"))
-        return toast.error("File harus berupa gambar");
-
+        return toast.error("File harus gambar");
       const reader = new FileReader();
       reader.addEventListener("load", () => {
         setImageSrc(reader.result?.toString() || null);
@@ -112,26 +115,17 @@ export default function SettingsPage() {
     }
   };
 
-  // --- 3. SIMPAN POSISI CROP ---
-  const onCropComplete = useCallback(
-    (croppedArea: any, croppedAreaPixels: any) => {
-      setCroppedAreaPixels(croppedAreaPixels);
-    },
-    []
-  );
+  const onCropComplete = useCallback((_: any, croppedAreaPixels: any) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  }, []);
 
-  // --- 4. PROSES UPLOAD FOTO ---
   const uploadCroppedImage = async () => {
     if (!imageSrc || !croppedAreaPixels || !user) return;
-
     try {
       setIsUpdatingProfile(true);
-
-      // A. Potong Gambar
       const croppedImageBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
-      if (!croppedImageBlob) throw new Error("Gagal memotong gambar");
+      if (!croppedImageBlob) throw new Error("Gagal crop gambar");
 
-      // B. Upload ke Supabase Storage
       const fileName = `${user.id}-${Date.now()}.jpg`;
       const fileToUpload = new File([croppedImageBlob], fileName, {
         type: "image/jpeg",
@@ -140,73 +134,45 @@ export default function SettingsPage() {
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(fileName, fileToUpload, { upsert: true });
-
       if (uploadError) throw uploadError;
 
-      // C. Dapatkan URL Publik
-      const { data: publicUrlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("avatars").getPublicUrl(fileName);
 
-      const publicUrl = publicUrlData.publicUrl;
-
-      // D. Update Metadata Auth (Supaya sesi saat ini update)
-      await supabase.auth.updateUser({
-        data: { avatar_url: publicUrl },
-      });
-
-      // E. Update Database (PERMANEN)
-      const { error: dbError } = await supabase
+      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+      await supabase
         .from("User")
-        .update({ avatar: publicUrl }) // Update kolom 'avatar'
+        .update({ avatar: publicUrl })
         .eq("id", user.id);
 
-      if (dbError) throw dbError;
-
-      // F. Update State & Broadcast Event
       setAvatarUrl(publicUrl);
       toast.success("Foto profil berhasil diperbarui!");
-
-      // Kirim sinyal ke Sidebar agar refresh foto
       eventBus.emit("userUpdated");
-
       setIsCropDialogOpen(false);
       setImageSrc(null);
       setZoom(1);
     } catch (error: any) {
       console.error(error);
-      toast.error("Gagal mengupload foto.");
+      toast.error("Gagal upload foto.");
     } finally {
       setIsUpdatingProfile(false);
     }
   };
 
-  // --- 5. UPDATE PROFIL (NAMA & BIO) ---
+  // --- 3. UPDATES ---
   const handleUpdateProfile = async () => {
     if (!user) return;
     setIsUpdatingProfile(true);
     try {
-      // A. Update Metadata Auth (Untuk Sesi)
-      const { error: authError } = await supabase.auth.updateUser({
+      await supabase.auth.updateUser({
         data: { full_name: fullName, bio: bio },
       });
-      if (authError) throw authError;
-
-      // B. Update Database (PERMANEN - PENTING AGAR SIDEBAR BERUBAH)
-      const { error: dbError } = await supabase
-        .from("User")
-        .update({ name: fullName }) // Update kolom 'name' di DB
-        .eq("id", user.id);
-
-      if (dbError) throw dbError;
-
+      await supabase.from("User").update({ name: fullName }).eq("id", user.id);
       toast.success("Profil diperbarui!");
-
-      // Kirim sinyal ke Sidebar
       eventBus.emit("userUpdated");
-    } catch (error: any) {
-      console.error(error);
-      toast.error("Gagal memperbarui profil.");
+    } catch (e) {
+      toast.error("Gagal update profil.");
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -223,23 +189,47 @@ export default function SettingsPage() {
       if (error) throw error;
       toast.success("Password berhasil diubah!");
       setNewPassword("");
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (e: any) {
+      toast.error(e.message);
     } finally {
       setIsUpdatingPassword(false);
     }
   };
 
+  const handleUpdateAI = async () => {
+    if (!user) return;
+    setIsUpdatingProfile(true);
+    try {
+      await supabase
+        .from("User")
+        .update({ customInstructions: customInstructions })
+        .eq("id", user.id);
+      toast.success("Preferensi AI disimpan!");
+    } catch {
+      toast.error("Gagal simpan preferensi.");
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const TABS = [
+    { id: "profile", label: "Profil", icon: User },
+    { id: "account", label: "Akun", icon: Lock },
+    { id: "appearance", label: "Tampilan", icon: Palette },
+    { id: "ai_preferences", label: "AI Prefs", icon: Bot },
+  ];
+
   return (
-    <div className="flex flex-col h-full w-full p-6 md:p-10 space-y-8 overflow-y-auto bg-background">
+    <div className="flex flex-col h-full w-full p-4 md:p-10 overflow-y-auto bg-background pb-24 md:pb-10">
+      {/* HEADER */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-2 mb-8"
       >
         <h1 className="text-3xl font-bold tracking-tight">Pengaturan</h1>
-        <p className="text-muted-foreground">
-          Kelola preferensi akun dan tampilan aplikasi.
+        <p className="text-muted-foreground text-sm md:text-base">
+          Kelola preferensi akun, tampilan, dan kepribadian AI.
         </p>
       </motion.div>
 
@@ -247,43 +237,70 @@ export default function SettingsPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex-1"
+        className="flex-1 max-w-4xl w-full mx-auto"
       >
-        <Tabs defaultValue="profile" className="w-full max-w-4xl">
-          <TabsList className="grid w-full grid-cols-3 mb-8 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl h-auto">
-            <TabsTrigger
-              value="profile"
-              className="rounded-lg py-2.5 gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950 data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all"
-            >
-              <User className="w-4 h-4" /> Profil
-            </TabsTrigger>
-            <TabsTrigger
-              value="account"
-              className="rounded-lg py-2.5 gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950 data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all"
-            >
-              <Lock className="w-4 h-4" /> Akun
-            </TabsTrigger>
-            <TabsTrigger
-              value="appearance"
-              className="rounded-lg py-2.5 gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950 data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all"
-            >
-              <Palette className="w-4 h-4" /> Tampilan
-            </TabsTrigger>
-          </TabsList>
+        {/* --- CUSTOM TABS NAVIGATION (SMART FLEX LAYOUT) --- */}
+        <div className="w-full mb-8">
+          {/* Container: Menggunakan FLEX agar dinamis, bukan Grid */}
+          <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-full border border-zinc-200 dark:border-zinc-700/50 w-full">
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "relative flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ease-in-out",
 
-          {/* --- TAB PROFIL --- */}
-          <TabsContent value="profile" className="space-y-6">
-            <div className="rounded-2xl border bg-card p-6 shadow-sm">
-              <div className="flex items-center gap-6 mb-8">
-                <Avatar className="h-24 w-24 border-4 border-background shadow-md">
+                    // --- LOGIKA LEBAR ---
+                    // Mobile: Tab Aktif dapet jatah flex-[3] (lebih lebar), yang lain flex-1.
+                    // Desktop (md): Semua rata flex-1.
+                    isActive ? "flex-[3] md:flex-1" : "flex-1",
+
+                    // --- STYLE VISUAL ---
+                    isActive
+                      ? "bg-white dark:bg-zinc-950 text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+                      : "text-muted-foreground hover:text-foreground hover:bg-zinc-200/50 dark:hover:bg-white/5"
+                  )}
+                >
+                  <tab.icon
+                    size={18}
+                    className={cn(isActive && "text-primary")}
+                  />
+
+                  {/* --- TEKS LABEL --- */}
+                  <span
+                    className={cn(
+                      "transition-all duration-300 truncate",
+                      // Mobile: Teks muncul kalau aktif. Desktop: Selalu muncul.
+                      isActive
+                        ? "inline-block opacity-100 max-w-[150px]"
+                        : "hidden md:inline-block md:opacity-100 w-0 md:w-auto"
+                    )}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* --- TAB CONTENTS --- */}
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* TAB PROFIL */}
+          {activeTab === "profile" && (
+            <div className="rounded-3xl border bg-card p-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row items-center gap-6 mb-8">
+                <Avatar className="h-28 w-28 border-4 border-background shadow-xl ring-2 ring-muted">
                   <AvatarImage src={avatarUrl} className="object-cover" />
-                  <AvatarFallback className="text-3xl font-bold bg-primary text-primary-foreground">
+                  <AvatarFallback className="text-4xl font-bold bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
                     {initial}
                   </AvatarFallback>
                 </Avatar>
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-lg">Foto Profil</h3>
-                  <div className="flex gap-2">
+                <div className="space-y-2 text-center sm:text-left">
+                  <h3 className="font-bold text-xl">Foto Profil</h3>
+                  <div className="flex gap-2 justify-center sm:justify-start">
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -295,15 +312,12 @@ export default function SettingsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => fileInputRef.current?.click()}
-                      className="gap-2"
+                      className="gap-2 rounded-xl"
                       disabled={isUpdatingProfile}
                     >
                       <Upload className="w-4 h-4" /> Upload Foto
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Format: JPG, PNG. Maks 2MB.
-                  </p>
                 </div>
               </div>
 
@@ -314,6 +328,7 @@ export default function SettingsPage() {
                     placeholder="Nama Anda"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
+                    className="rounded-xl"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -322,6 +337,7 @@ export default function SettingsPage() {
                     placeholder="Contoh: Software Engineer"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
+                    className="rounded-xl"
                   />
                 </div>
               </div>
@@ -330,7 +346,7 @@ export default function SettingsPage() {
                 <Button
                   onClick={handleUpdateProfile}
                   disabled={isUpdatingProfile}
-                  className="gap-2"
+                  className="gap-2 rounded-xl px-6"
                 >
                   {isUpdatingProfile ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -341,18 +357,18 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </div>
-          </TabsContent>
+          )}
 
-          {/* --- TAB AKUN --- */}
-          <TabsContent value="account" className="space-y-6">
-            <div className="rounded-2xl border bg-card p-6 shadow-sm">
+          {/* TAB AKUN */}
+          {activeTab === "account" && (
+            <div className="rounded-3xl border bg-card p-6 shadow-sm">
               <div className="grid gap-6">
                 <div className="grid gap-2">
                   <Label>Email</Label>
                   <Input
                     value={user?.email || ""}
                     disabled
-                    className="bg-muted opacity-70"
+                    className="bg-muted opacity-70 rounded-xl"
                   />
                 </div>
                 <div className="grid gap-2 pt-4 border-t">
@@ -362,6 +378,7 @@ export default function SettingsPage() {
                     placeholder="Minimal 6 karakter"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    className="rounded-xl"
                   />
                 </div>
               </div>
@@ -369,7 +386,7 @@ export default function SettingsPage() {
                 <Button
                   onClick={handleUpdatePassword}
                   disabled={isUpdatingPassword}
-                  className="gap-2"
+                  className="gap-2 rounded-xl px-6"
                 >
                   {isUpdatingPassword ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -380,14 +397,14 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </div>
-          </TabsContent>
+          )}
 
-          {/* --- TAB TAMPILAN --- */}
-          <TabsContent value="appearance" className="space-y-6">
-            <div className="rounded-2xl border bg-card p-6 shadow-sm">
+          {/* TAB TAMPILAN */}
+          {activeTab === "appearance" && (
+            <div className="rounded-3xl border bg-card p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <h3 className="font-medium">Mode Gelap</h3>
+                  <h3 className="font-medium text-lg">Mode Gelap</h3>
                   <p className="text-sm text-muted-foreground">
                     Aktifkan tema gelap untuk kenyamanan mata.
                   </p>
@@ -400,8 +417,48 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-          </TabsContent>
-        </Tabs>
+          )}
+
+          {/* TAB AI PREFS */}
+          {activeTab === "ai_preferences" && (
+            <div className="rounded-3xl border bg-card p-6 shadow-sm">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="font-semibold text-lg">Instruksi Khusus</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Berikan instruksi tentang gaya bicara, format jawaban, atau
+                    peran AI.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Textarea
+                    className="flex min-h-[150px] w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="Contoh: 'Jawablah dengan singkat dan santai. Gunakan bahasa gaul sedikit.'"
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    AI akan mengingat instruksi ini di setiap percakapan baru.
+                  </p>
+                </div>
+                <div className="flex justify-end mt-4">
+                  <Button
+                    onClick={handleUpdateAI}
+                    disabled={isUpdatingProfile}
+                    className="gap-2 rounded-xl px-6"
+                  >
+                    {isUpdatingProfile ? (
+                      <Loader2 className="animate-spin w-4 h-4" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    Simpan Preferensi
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </motion.div>
 
       {/* --- DIALOG CROPPER --- */}
@@ -415,8 +472,6 @@ export default function SettingsPage() {
               Geser dan zoom untuk mendapatkan potongan terbaik.
             </DialogDescription>
           </DialogHeader>
-
-          {/* CROPPER AREA */}
           <div className="relative w-full h-[350px] bg-black">
             {imageSrc && (
               <Cropper
@@ -432,8 +487,6 @@ export default function SettingsPage() {
               />
             )}
           </div>
-
-          {/* CONTROLS */}
           <div className="p-6 bg-zinc-900 space-y-6">
             <div className="space-y-3">
               <div className="flex justify-between text-xs font-medium text-zinc-400">
@@ -451,7 +504,6 @@ export default function SettingsPage() {
                 className="cursor-pointer"
               />
             </div>
-
             <DialogFooter className="flex gap-3 sm:justify-between">
               <Button
                 variant="ghost"
@@ -470,7 +522,7 @@ export default function SettingsPage() {
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 ) : (
                   <Check className="w-4 h-4 mr-2" />
-                )}
+                )}{" "}
                 Simpan Foto
               </Button>
             </DialogFooter>

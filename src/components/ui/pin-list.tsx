@@ -102,7 +102,8 @@ const ListItem = ({
         </div>
 
         {/* Action Buttons (Floating on Right) */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* PERBAIKAN DISINI: opacity-100 (HP) -> md:opacity-0 (Laptop) */}
+        <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => {
               e.stopPropagation();

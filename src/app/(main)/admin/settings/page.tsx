@@ -27,17 +27,22 @@ import {
   Smile,
   ShieldAlert,
   Megaphone,
-  Sparkles,
-  Settings2,
   BrainCircuit,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
+interface SiteConfig {
+  maintenanceMode: boolean;
+  botTone: string;
+  handoffMessage: string;
+  broadcastMessage: string;
+}
+
 export default function AdminSettingsPage() {
   const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(false);
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<SiteConfig>({
     maintenanceMode: false,
     botTone: "FORMAL",
     handoffMessage: "",
@@ -50,7 +55,14 @@ export default function AdminSettingsPage() {
       .select("*")
       .eq("id", "config")
       .single();
-    if (data) setConfig(data as any);
+    if (data) {
+      setConfig({
+        maintenanceMode: data.maintenanceMode ?? false,
+        botTone: data.botTone ?? "FORMAL",
+        handoffMessage: data.handoffMessage ?? "",
+        broadcastMessage: data.broadcastMessage ?? "",
+      });
+    }
   }, [supabase]);
 
   useEffect(() => {
@@ -75,7 +87,6 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="p-4 md:p-8 lg:p-10 max-w-6xl mx-auto space-y-8 min-h-screen">
-      {/* Header Section */}
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-3 text-blue-600">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -89,9 +100,7 @@ export default function AdminSettingsPage() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Main Content Area */}
         <div className="lg:col-span-8 space-y-6">
-          {/* AI Personality Card */}
           <Card className="border-none ring-1 ring-border shadow-sm rounded-2xl overflow-hidden">
             <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b py-4">
               <div className="flex items-center gap-2">
@@ -164,7 +173,6 @@ export default function AdminSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Broadcast Card */}
           <Card className="border-none ring-1 ring-border shadow-sm rounded-2xl">
             <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b py-4">
               <div className="flex items-center gap-2">
@@ -191,9 +199,7 @@ export default function AdminSettingsPage() {
           </Card>
         </div>
 
-        {/* Sidebar Controls */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Maintenance Control */}
           <Card
             className={`rounded-2xl border-none ring-1 transition-all duration-300 ${
               config.maintenanceMode
@@ -229,7 +235,6 @@ export default function AdminSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Save Action */}
           <div className="sticky top-6">
             <Button
               onClick={saveConfig}

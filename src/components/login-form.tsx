@@ -5,16 +5,20 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { IconBrandGoogle } from "@tabler/icons-react";
+import { Eye, EyeOff } from "lucide-react"; // Import Icon Mata
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
-import { Turnstile } from "@marsidev/react-turnstile"; // 1. Import Turnstile
+import { Turnstile } from "@marsidev/react-turnstile";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null); // 2. State Token
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  // State untuk lihat password
+  const [showPassword, setShowPassword] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
@@ -23,20 +27,17 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        // Redirect ke route callback yang baru kita buat
         redirectTo: `${window.location.origin}/api/auth/callback`,
       },
     });
     if (error) {
       toast.error("Gagal Login Google", { description: error.message });
     }
-    // Jika sukses, user akan diarahkan ke Google, jadi tidak perlu toast success disini
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // 3. Validasi Captcha sebelum submit
     if (!captchaToken) {
       toast.error("Mohon selesaikan verifikasi Captcha.");
       return;
@@ -48,17 +49,28 @@ export function LoginForm() {
       email,
       password,
       options: {
-        captchaToken: captchaToken, // 4. Kirim token ke Supabase
+        captchaToken: captchaToken,
       },
     });
 
     if (error) {
-      toast.error("Login Gagal", {
-        description: error.message,
+      // --- LOGIKA PESAN ERROR CUSTOM ---
+      let errorMsg = error.message;
+      let errorDesc = "Silakan coba lagi.";
+
+      if (errorMsg.includes("Invalid login credentials")) {
+        errorMsg = "Email atau Kata Sandi Salah";
+        errorDesc = "Mohon periksa kembali kredensial Anda.";
+      } else if (errorMsg.includes("Email not confirmed")) {
+        errorMsg = "Email Belum Diverifikasi";
+        errorDesc = "Silakan cek inbox email Anda untuk verifikasi.";
+      }
+
+      toast.error(errorMsg, {
+        description: errorDesc,
       });
+
       setLoading(false);
-      // Opsional: Reset captcha jika gagal agar user verifikasi ulang
-      // ref.current?.reset();
     } else {
       toast.success("Berhasil Masuk!", {
         description: "Selamat datang kembali.",
@@ -89,26 +101,37 @@ export function LoginForm() {
             required
           />
         </LabelInputContainer>
+
         <LabelInputContainer className="mb-4">
           <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            placeholder="••••••••"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              placeholder="••••••••"
+              // Ubah type berdasarkan state showPassword
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="pr-10" // Tambah padding kanan agar teks tidak tertutup icon
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </LabelInputContainer>
 
-        {/* 5. Komponen Turnstile */}
         <div className="mb-6 flex justify-center">
           <Turnstile
             siteKey={process.env.NEXT_PUBLIC_CLOUDFLARE_SITE_KEY || ""}
             onSuccess={(token) => setCaptchaToken(token)}
             onError={() => toast.error("Gagal memuat Captcha")}
             options={{
-              theme: "auto", // Mengikuti tema light/dark system
+              theme: "auto",
               size: "flexible",
             }}
           />

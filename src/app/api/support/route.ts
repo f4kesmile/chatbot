@@ -1,10 +1,11 @@
 import { createClient } from "@/utils/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { sendEmailNotification } from "@/lib/email";
+import { getSupportEmailTemplate } from "@/lib/email-templates";
 
 export async function POST(req: Request) {
   try {
-    // 1. AUTH & SECURITY CHECK
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -15,11 +16,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. PARSE & VALIDATE INPUT
     const body = await req.json();
     const { subject, message } = body;
 
-    // Sanitasi input (hapus spasi depan/belakang)
     const cleanSubject = subject?.trim();
     const cleanMessage = message?.trim();
 
@@ -37,8 +36,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. DATABASE TRANSACTION
-    // Kita set isReadByAdmin = false agar muncul notifikasi/bold di Admin
     const newTicket = await prisma.supportTicket.create({
       data: {
         userId: user.id,
@@ -46,10 +43,24 @@ export async function POST(req: Request) {
         subject: cleanSubject,
         message: cleanMessage,
         status: "OPEN",
-        isReadByAdmin: false, // PENTING: Notifikasi untuk Admin
-        isReadByUser: true,   // User sudah baca karena dia yang buat
+        isReadByAdmin: false,
+        isReadByUser: true,
       }
     });
+
+    const adminEmail = process.env.ADMIN_EMAIL_NOTIFICATION;
+    if (adminEmail) {
+      const emailHtml = getSupportEmailTemplate(
+        "Tiket Support Baru",
+        `User <b>${user.email}</b> membuat tiket:<br/><br/>"<i>${cleanMessage}</i>"`,
+        `${process.env.NEXT_PUBLIC_APP_URL}/admin/inbox`
+      );
+      sendEmailNotification({
+        to: adminEmail,
+        subject: `[Support] Tiket Baru: ${cleanSubject}`,
+        html: emailHtml
+      });
+    }
 
     return NextResponse.json({ 
       success: true, 
@@ -58,14 +69,10 @@ export async function POST(req: Request) {
     });
 
   } catch (error: any) {
-    // 4. GLOBAL ERROR HANDLING
     console.error("[API_SUPPORT_CREATE_ERROR]", error);
-    
-    // Menangani error spesifik Prisma (misal koneksi putus)
     if (error.code === 'P2002') {
        return NextResponse.json({ error: "Terjadi duplikasi data." }, { status: 409 });
     }
-
     return NextResponse.json(
       { error: "Terjadi kesalahan server. Silakan coba lagi nanti." }, 
       { status: 500 }
