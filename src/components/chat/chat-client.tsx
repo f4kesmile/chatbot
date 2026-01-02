@@ -495,7 +495,7 @@ export function ChatClient({
           <div
             className={cn(
               "mx-auto w-full md:max-w-4xl space-y-6 py-4 transition-all duration-300",
-              hasMessages ? "pb-48" : "pb-10"
+              hasMessages ? "pb-32 md:pb-20" : "pb-10"
             )}
           >
             {/* CHAT MESSAGES */}
@@ -550,7 +550,7 @@ export function ChatClient({
         className={cn(
           "transition-all duration-500 ease-in-out absolute left-0 right-0 z-40 flex justify-center",
           hasMessages
-            ? "bottom-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200/50 dark:border-zinc-800/50 pt-3 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+            ? "bottom-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200/50 dark:border-zinc-800/50 pt-3 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pb-6"
             : "top-1/2 -translate-y-1/2 px-4"
         )}
       >
