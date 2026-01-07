@@ -42,7 +42,7 @@ export default function MainLayout({
           </div>
         </div>
         {/* 3. MAIN CONTENT AREA */}
-        <div className="flex-1 w-full h-full overflow-hidden relative">
+        <div className="flex-1 w-full h-full overflow-hidden relative pt-14 md:pt-0">
           {children}
         </div>
       </main>
